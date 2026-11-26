@@ -1,0 +1,71 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Demo Director — Settings</title>
+  <link rel="stylesheet" href="ui.css">
+  <style>
+    body { padding: 32px 24px; }
+    main { max-width: 760px; margin: 0 auto; display: grid; gap: 28px; }
+    header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+    h1 { font-size: 20px; }
+    h2 { font-size: 15px; margin-bottom: 4px; }
+    section > p { margin: 0 0 12px; }
+    .veil { display: grid; grid-template-columns: 28px 1fr auto; gap: 8px 10px; align-items: start;
+      padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); margin-bottom: 8px; }
+    .veil .slot { font-weight: 700; font-size: 15px; padding-top: 5px; text-align: center; font-variant-numeric: tabular-nums; }
+    .veil .fields { display: grid; gap: 6px; min-width: 0; }
+    .veil .meta { font-size: 12px; }
+    .veil .side { display: grid; gap: 6px; justify-items: end; }
+    .veil .order { display: flex; gap: 4px; }
+    .veil .order button { padding: 2px 8px; }
+    .bar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    .note { padding: 10px 12px; border-radius: 8px; background: var(--panel); border: 1px solid var(--line); }
+    table { border-collapse: collapse; width: 100%; }
+    td { padding: 4px 8px 4px 0; vertical-align: top; }
+    #status { font-size: 12px; }
+    @media (max-width: 520px) { .veil { grid-template-columns: 22px 1fr; } .veil .side { grid-column: 2; justify-items: start; } }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Demo Director</h1>
+    <div class="mode" role="group" aria-label="Mode">
+      <button data-mode="rehearse">Rehearse</button>
+      <button data-mode="live">Live</button>
+    </div>
+  </header>
+
+  <section>
+    <h2>Veils</h2>
+    <p class="muted">Each veil hides everything its selectors match. The slot number is the hotkey and Stream Deck slot. To add one, open your demo page in Rehearse mode and use <b>Pick element</b> from the toolbar popup or the Rehearse chip.</p>
+    <div id="veils"></div>
+    <div class="bar">
+      <button id="reset">Reset stage (all veils on)</button>
+      <span id="status" class="muted"></span>
+    </div>
+  </section>
+
+  <section>
+    <h2>Back up and share</h2>
+    <p class="muted">Export your veils as a JSON file to commit to the repo or hand to a colleague. Importing replaces the current list.</p>
+    <div class="bar">
+      <button id="export">Export JSON</button>
+      <button id="import">Import JSON…</button>
+      <input id="file" type="file" accept="application/json,.json" hidden>
+    </div>
+  </section>
+
+  <section>
+    <h2>Keyboard shortcuts (fallback)</h2>
+    <p class="muted">The Stream Deck plugin is the main control. These shortcuts keep working if it isn't running. Chrome only lets an extension suggest 4 keys; set the rest yourself.</p>
+    <div class="note">
+      <table id="shortcuts"></table>
+      <p style="margin:10px 0 0"><button id="shortcutsBtn">Open chrome://extensions/shortcuts</button></p>
+    </div>
+  </section>
+</main>
+<script src="options.js" type="module"></script>
+</body>
+</html>
