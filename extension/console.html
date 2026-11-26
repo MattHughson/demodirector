@@ -1,0 +1,160 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Demo Director — Console</title>
+  <style>
+    /* Presenter-only screen: one dark look, built to be read at a glance from a metre away. */
+    :root {
+      --bg: #0b0f17; --card: #141a25; --card2: #1b2331; --line: #273043;
+      --text: #f2f4f7; --muted: #8a94a6; --accent: #f79009;
+      --live: #f04438; --on: #12b76a; --warn: #fdb022;
+      color-scheme: dark;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text);
+      font: 15px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; padding: 16px; }
+    button { font: inherit; color: inherit; cursor: pointer; }
+    kbd { font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--muted); border: 1px solid var(--line);
+      border-bottom-width: 2px; border-radius: 5px; padding: 1px 6px; background: var(--bg); white-space: nowrap; }
+    kbd.unset { border-style: dashed; opacity: .6; }
+
+    header { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+    .mode { display: flex; align-items: center; gap: 10px; padding: 10px 18px; border-radius: 12px; border: 0;
+      background: var(--card2); font-size: 20px; font-weight: 800; letter-spacing: .06em; }
+    .mode .dot { width: 14px; height: 14px; border-radius: 50%; background: var(--warn); }
+    .mode.live { background: var(--live); }
+    .mode.live .dot { background: #fff; animation: pulse 1.4s infinite; }
+    @keyframes pulse { 50% { opacity: .35; } }
+    .spacer { flex: 1; }
+    .conn { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; }
+    .conn i { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); }
+    .conn.ok i { background: var(--on); }
+    .reset { padding: 10px 16px; border-radius: 12px; border: 1px solid var(--line); background: var(--card); font-weight: 700; }
+    .reset:hover { border-color: var(--muted); }
+
+    main { display: grid; gap: 14px; grid-template-columns: 1fr 1fr; align-items: start; }
+    .col { display: grid; gap: 14px; min-width: 0; }
+    @media (max-width: 700px) { main { grid-template-columns: 1fr; } }
+    section { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 14px; display: grid; gap: 10px; }
+    h2 { margin: 0; font-size: 12px; text-transform: uppercase; letter-spacing: .12em; color: var(--muted); display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+    h2 > span { font-weight: 600; letter-spacing: .06em; }
+
+    /* Generic action row: state on the left, shortcut on the right. Whole row is clickable. */
+    .item { display: grid; grid-template-columns: auto 1fr auto; gap: 12px; align-items: center; width: 100%;
+      text-align: left; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--card2); }
+    .item:hover { border-color: var(--muted); }
+    .item .slot { width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; font-weight: 800;
+      background: var(--bg); color: var(--muted); font-variant-numeric: tabular-nums; }
+    .item .label { min-width: 0; display: grid; }
+    .item .name { font-weight: 700; font-size: 17px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .item .sub { font-size: 13px; color: var(--muted); }
+    .item.on { border-color: var(--accent); }
+    .item.on .slot { background: var(--accent); color: #fff; }
+    .pill { font-size: 12px; font-weight: 800; letter-spacing: .08em; padding: 3px 9px; border-radius: 999px; background: var(--bg); color: var(--muted); }
+    .on .pill { background: var(--accent); color: #fff; }
+
+    /* Camera */
+    .cam-state { display: flex; align-items: center; gap: 14px; }
+    .cam-dot { width: 64px; height: 64px; border-radius: 50%; flex: none; border: 3px solid var(--line); background: var(--bg); display: grid; place-items: center; color: var(--muted); }
+    .cam-dot.on { border-color: var(--on); color: var(--on); }
+    .cam-dot.hidden-phase { border-style: dashed; opacity: .5; }
+    .cam-big { font-size: 26px; font-weight: 800; }
+    .cam-sub { color: var(--muted); font-size: 14px; font-variant-numeric: tabular-nums; }
+    .row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+    .btn { display: grid; gap: 4px; justify-items: center; align-content: center; padding: 10px 8px; border-radius: 12px; border: 1px solid var(--line); background: var(--card2); font-weight: 700; }
+    .btn:hover { border-color: var(--muted); }
+    .btn.on { border-color: var(--accent); background: rgba(247,144,9,.14); }
+    .sizes { display: flex; gap: 4px; }
+    .sizes span { padding: 0 6px; border-radius: 5px; color: var(--muted); }
+    .sizes span.on { background: var(--text); color: var(--bg); }
+
+    /* Topics */
+    .now { text-align: left; width: 100%; padding: 12px 14px; border-radius: 12px; background: var(--card2); border: 1px solid var(--line); display: flex; gap: 12px; align-items: center; }
+    .now.on { border-color: var(--accent); }
+    .now .ico { width: 44px; height: 44px; border-radius: 10px; display: grid; place-items: center; background: var(--bg); color: var(--muted); flex: none; }
+    .now.on .ico { background: var(--accent); color: #fff; }
+    .now .k { font-size: 12px; color: var(--muted); letter-spacing: .1em; text-transform: uppercase; font-weight: 700; }
+    .now .t { font-size: 22px; font-weight: 800; line-height: 1.2; }
+    .topics { display: grid; gap: 4px; }
+    .topic { display: grid; grid-template-columns: 26px 22px 1fr auto; gap: 10px; align-items: center; padding: 6px 10px; border-radius: 10px;
+      border: 1px solid transparent; background: transparent; text-align: left; color: var(--muted); }
+    .topic:hover { background: var(--card2); }
+    .topic .n { font-weight: 800; text-align: right; font-variant-numeric: tabular-nums; }
+    .topic.current { color: var(--text); background: var(--card2); }
+    .topic.current.on { border-color: var(--accent); }
+    .topic.next .n::after { content: " ▸"; color: var(--accent); }
+
+    /* Slack */
+    .msg { padding: 10px 12px; border-radius: 12px; background: var(--card2); border: 1px solid var(--line); font-size: 14px; }
+    .msg b { font-size: 15px; }
+    .msg.on { border-color: var(--accent); }
+
+    .foot { margin-top: 14px; color: var(--muted); font-size: 12px; display: flex; gap: 12px; flex-wrap: wrap; justify-content: space-between; }
+    .foot button { background: none; border: 0; color: var(--muted); text-decoration: underline; padding: 0; }
+  </style>
+</head>
+<body>
+  <header>
+    <button class="mode" id="mode" title="Switch Rehearse / Live"><span class="dot"></span><span id="modeText">REHEARSE</span></button>
+    <kbd data-cmd="toggle-mode"></kbd>
+    <span class="spacer"></span>
+    <span class="conn" id="conn" title="Stream Deck plugin arrives in phase 4"><i></i><span>Stream Deck: not connected</span></span>
+    <button class="reset" id="reset">Reset stage <kbd data-cmd="reset"></kbd></button>
+  </header>
+
+  <main>
+    <div class="col">
+    <section>
+      <h2>Camera</h2>
+      <div class="cam-state">
+        <div class="cam-dot" id="camDot"></div>
+        <div><div class="cam-big" id="camBig">Off</div><div class="cam-sub" id="camSub"></div></div>
+      </div>
+      <div class="row">
+        <button class="btn" id="camOn"><span>On / off</span><kbd data-cmd="camera-toggle"></kbd></button>
+        <button class="btn" id="camBlink"><span>Blink</span><kbd data-cmd="camera-blink"></kbd></button>
+        <button class="btn" id="camSize"><span class="sizes"><span data-s="s">S</span><span data-s="m">M</span><span data-s="l">L</span></span><kbd data-cmd="camera-size"></kbd></button>
+      </div>
+    </section>
+
+    <section>
+      <h2>Veils <span>on = hidden from the audience</span></h2>
+      <div id="veils" style="display:grid;gap:8px"></div>
+    </section>
+
+    <section>
+      <h2>Slack post</h2>
+      <button class="item" id="slack">
+        <span class="slot">✉</span>
+        <span class="label"><span class="name" id="slackName"></span><span class="sub" id="slackSub"></span></span>
+        <kbd data-cmd="slack-ping"></kbd>
+      </button>
+      <div class="msg" id="slackMsg"></div>
+    </section>
+    </div>
+
+    <div class="col">
+    <section>
+      <h2>Topic <span><kbd data-cmd="topic-prev"></kbd> prev · next <kbd data-cmd="topic-next"></kbd></span></h2>
+      <button class="now" id="now" title="Show / hide current topic"></button>
+      <div class="row">
+        <button class="btn" id="prev"><span>◀ Prev</span></button>
+        <button class="btn" id="toggle"><span>Show / hide</span><kbd data-cmd="topic-toggle"></kbd></button>
+        <button class="btn" id="next"><span>Next ▶</span></button>
+      </div>
+      <div class="topics" id="topics"></div>
+    </section>
+    </div>
+  </main>
+
+  <div class="foot">
+    <span>Click anything to trigger it. Dashed keys aren't bound yet.</span>
+    <span><button id="shortcuts">Set shortcuts</button> · <button id="settings">Settings</button></span>
+  </div>
+
+  <script src="icons.js"></script>
+  <script src="console.js" type="module"></script>
+</body>
+</html>

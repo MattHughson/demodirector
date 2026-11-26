@@ -99,6 +99,7 @@ $('#file').onchange = async (e) => {
   }
 };
 
+$('#openConsole').onclick = () => send({ type: 'console.open' });
 $('#shortcutsBtn').onclick = () => chrome.tabs.create({ url: 'chrome://extensions/shortcuts' });
 chrome.commands.getAll().then((cmds) => {
   const t = $('#shortcuts');

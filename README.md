@@ -8,8 +8,8 @@ Stage-manage live product demos from a Stream Deck: hide parts of the page and r
 |---|---|---|
 | 1 | Extension core: veils, element picker, Rehearse/Live, badge, hotkeys, export/import | ✅ done |
 | 2 | Camera bubble (device picker, on/off, blink, S/M/L), 10 topic lower-thirds, Slack notification | ✅ done |
-| 3 | Director console (second-screen window) | next |
-| 4 | Stream Deck plugin (native, WebSocket bridge, live key states) | |
+| 3 | Director console (second-screen window) | ✅ done |
+| 4 | Stream Deck plugin (native, WebSocket bridge, live key states) | next |
 | later | Fill drop (Sanity patch) | |
 
 ## Install (unpacked)
@@ -50,6 +50,12 @@ The 10 script steps come from `topics.json` and can be edited in Settings (title
 The defaults are in `slack-toast.json` and can be edited in Settings, where you can also upload the avatar. The post slides in from the top-right and sits below the camera bubble when it's on. Clicking it dismisses it. It stays until dismissed, unless `autoHideSeconds` is set. The optional chime is synthesised in the page, so tab-audio sharing picks it up.
 
 **Reset** turns every veil on and hides the Slack post and the topic. The camera is left as it is.
+
+## Director console (second screen)
+
+Open it from the popup (**Console**), from Settings, or with the `open-console` shortcut. Drag the window to your second monitor; it reopens in the same place next time, and opening it again just focuses it.
+
+It shows everything live: Rehearse/Live, camera state (with a countdown to the next blink), the current topic with the full list of 10 and a marker on the next one, each veil (HIDDEN or SHOWN), and the Slack post. Each item shows its shortcut, with a dashed outline if it isn't bound yet. Clicking anything triggers it, so the console doubles as a backup for the Stream Deck.
 
 ## Modes
 

@@ -297,6 +297,28 @@ const handlers = {
     return handlers[slack.shown ? 'slack.hide' : 'slack.show']();
   },
 
+  // ----- Director console (second screen) -----
+
+  // Focus the console if it's open, otherwise open it where it was last left.
+  async 'console.open'() {
+    const { consoleWindowId } = await chrome.storage.session.get('consoleWindowId');
+    if (consoleWindowId) {
+      try {
+        await chrome.windows.update(consoleWindowId, { focused: true, drawAttention: false });
+        return { ok: true, reused: true };
+      } catch {} // closed since
+    }
+    const { consoleBounds } = await chrome.storage.local.get('consoleBounds');
+    const win = await chrome.windows.create({
+      url: chrome.runtime.getURL('console.html'),
+      type: 'popup',
+      focused: true,
+      ...(consoleBounds || { width: 760, height: 900 }),
+    });
+    await chrome.storage.session.set({ consoleWindowId: win.id });
+    return { ok: true };
+  },
+
   // ----- settings -----
 
   // patch is deep-merged into stored overrides, e.g. { camera: { blinkSeconds: 20 } }.
@@ -417,6 +439,7 @@ const COMMANDS = {
   'topic-prev': { type: 'topic.prev' },
   'topic-toggle': { type: 'topic.toggle' },
   'slack-ping': { type: 'slack.toggle' },
+  'open-console': { type: 'console.open' },
 };
 
 chrome.commands.onCommand.addListener((command, tab) => {

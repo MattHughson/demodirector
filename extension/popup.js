@@ -51,6 +51,7 @@ $('#topicNext').onclick = () => send({ type: 'topic.next' });
 $('#topicName').onclick = () => send({ type: 'topic.toggle' });
 $('#slack').onclick = () => send({ type: 'slack.toggle' });
 $('#reset').onclick = () => send({ type: 'reset' });
+$('#console').onclick = () => send({ type: 'console.open' }).then(() => window.close());
 $('#settings').onclick = () => chrome.runtime.openOptionsPage();
 $('#pick').onclick = async () => {
   const res = await send({ type: 'picker.start' });
