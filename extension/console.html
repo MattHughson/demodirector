@@ -140,7 +140,13 @@
     .timer .bar i { display: block; height: 100%; width: 0; background: var(--on); transition: width .5s linear; }
     .warnt .big, .segt.warnt { color: var(--warn); } .warnt .bar i { background: var(--warn); }
     .overt .big, .segt.overt { color: var(--live); } .overt .bar i { background: var(--live); }
-    .segnotes { font-size: calc(20px * var(--notes-scale, 1)); line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .segnotes { font-size: calc(20px * var(--notes-scale, 1)); line-height: 1.45; white-space: normal; overflow-wrap: anywhere; }
+    .segnotes ul, .segnotes ol { margin: 4px 0; padding-left: 1.3em; }
+    .segnotes li { margin: 2px 0; }
+    .segnotes li::marker { color: var(--accent); }
+    .segnotes p { margin: 0 0 6px; }
+    .segnotes b { color: #fff; }
+    .segnotes mark { background: rgba(253,176,34,.25); color: var(--warn); border-radius: 4px; padding: 0 4px; }
     .segnotes.empty { color: var(--muted); font-size: 14px; font-style: italic; }
     .segt { font: 700 15px ui-monospace, Menlo, monospace; color: var(--muted); margin-left: auto; font-variant-numeric: tabular-nums; }
     .pill.warnt { background: var(--warn); color: #111; } .pill.overt { background: var(--live); color: #fff; }
@@ -272,6 +278,7 @@
 
   <script src="icons.js"></script>
   <script src="deck.js"></script>
+  <script src="rich.js"></script>
   <script src="console.js" type="module"></script>
 </body>
 </html>

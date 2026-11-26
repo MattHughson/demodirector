@@ -33,16 +33,21 @@ export const ACTIONS = {
   },
 
   camera: {
-    view: (s) =>
-      s.camera.on
+    ticks: true, // arrival-delay countdown
+    view(s, _settings, now) {
+      const wait = s.camera.on && s.camera.showAt ? s.camera.showAt - now : 0;
+      if (wait > 0) return { bg: COLORS.accent, icon: 'camera', top: `IN ${Math.ceil(wait / 1000)}s`, label: 'Camera', sub: 'starting…' };
+      return s.camera.on
         ? { bg: COLORS.on, icon: 'camera', top: 'ON', label: 'Camera', sub: sizeLabel(s.camera.size) }
-        : { icon: 'camera', top: 'OFF', label: 'Camera', dim: false },
+        : { icon: 'camera', top: 'OFF', label: 'Camera' };
+    },
     press: () => ({ type: 'camera.toggle' }),
   },
 
   blink: {
     ticks: true,
     view(s, _settings, now) {
+      if (s.camera.on && s.camera.blink && s.camera.showAt > now) return { bg: COLORS.accent, icon: 'blink', top: 'BLINK', label: `In ${Math.ceil((s.camera.showAt - now) / 1000)}s`, sub: 'after delay' };
       if (!(s.camera.on && s.camera.blink)) return { icon: 'blink', top: 'BLINK', label: 'Blink', sub: `every ${s.camera.blinkSeconds}s` };
       const { hidden, left } = blinkPhase(s.camera, now);
       return { bg: COLORS.accent, icon: 'blink', top: hidden ? 'HIDDEN' : 'VISIBLE', label: hidden ? `Back ${left}s` : `Hides ${left}s`, sub: 'press to stop' };

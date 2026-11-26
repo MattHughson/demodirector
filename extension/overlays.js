@@ -122,6 +122,13 @@
         frame = null;
       }
       clearTimeout(blinkTimer);
+      // Arrival delay: streaming already, but held hidden until showAt, then fades in.
+      const wait = s.camera.on && s.camera.showAt ? s.camera.showAt - Date.now() : 0;
+      if (wait > 0) {
+        cam.classList.add('off');
+        blinkTimer = setTimeout(() => renderCamera(state), wait + 20);
+        return;
+      }
       if (s.camera.on && s.camera.blink) blinkTick();
       else cam.classList.remove('off');
     }

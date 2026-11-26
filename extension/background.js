@@ -55,7 +55,8 @@ const LIVE_DEFAULTS = {
   revealed: [],
   mode: 'rehearse',
   // size: 's' | 'm' | 'l' | <px>; pos: null (default top-right) or { corner: 'tl'|'tr'|'bl'|'br', x, y }
-  camera: { on: false, blink: false, blinkStart: 0, size: 'm', pos: null },
+  // showAt: while in the future, the bubble is on but held hidden (segment arrival delay).
+  camera: { on: false, blink: false, blinkStart: 0, size: 'm', pos: null, showAt: null },
   topic: { index: 0, shown: false },
   slack: { shown: false, at: 0 },
   // Segments (demo tabs) timing: ms spent per segment id, the one on screen now, and the Live clock.
@@ -73,6 +74,7 @@ const CAMERA_DEFAULTS = {
   offsetRight: 24,
   ringColor: '#ffffff', // the frame around the bubble
   ringWidth: 3, // px; 0 = no ring
+  background: { mode: 'none', color: '#0b0f17' }, // none | color | blur (MediaPipe, local)
 };
 
 const LOWER_THIRD_DEFAULTS = { offsetLeft: 32, offsetBottom: 48, scale: 1, accent: '#f79009' };
@@ -210,13 +212,21 @@ async function segmentForTab(tabId) {
   return pair ? { ...pair, id: segId(pair) } : null;
 }
 
-// Camera preset → live camera. mode: keep | off | on | blink; pos/size optional.
+// Camera preset → live camera. mode: keep | off | on | blink; delay (s) holds an
+// on/blink camera hidden after arrival; pos/size optional.
 function cameraForSegment(camera, preset) {
-  const next = { ...camera };
+  const next = { ...camera, showAt: null };
   const mode = preset?.mode || 'keep';
+  const delay = Math.max(0, Math.min(600, Number(preset?.delay) || 0)) * 1000;
+  const showAt = (mode === 'on' || mode === 'blink') && delay ? Date.now() + delay : null;
+  if (mode === 'keep') next.showAt = camera.showAt; // leave any pending delay alone
   if (mode === 'off') Object.assign(next, { on: false, blink: false });
-  if (mode === 'on') Object.assign(next, { on: true, blink: false });
-  if (mode === 'blink') Object.assign(next, { on: true, blink: true, blinkStart: camera.blink ? camera.blinkStart : Date.now() });
+  if (mode === 'on') Object.assign(next, { on: true, blink: false, showAt });
+  if (mode === 'blink') {
+    // The blink cycle starts when the bubble appears.
+    const blinkStart = showAt || (camera.blink && !camera.showAt ? camera.blinkStart : Date.now());
+    Object.assign(next, { on: true, blink: true, blinkStart, showAt });
+  }
   if (preset?.pos) Object.assign(next, { pos: preset.pos, size: preset.size || camera.size });
   else next.pos = null; // back to the default spot
   return next;
@@ -564,7 +574,7 @@ const handlers = {
 
   async 'camera.set'({ on }) {
     const { camera } = await loadState();
-    await saveLive({ camera: { ...camera, on: !!on, blink: on ? camera.blink : false } });
+    await saveLive({ camera: { ...camera, on: !!on, blink: on ? camera.blink : false, showAt: null } });
     return { ok: true, on: !!on };
   },
 
@@ -578,7 +588,7 @@ const handlers = {
   async 'camera.blink'({ on } = {}) {
     const { camera } = await loadState();
     const blink = on ?? !camera.blink;
-    await saveLive({ camera: { ...camera, on: camera.on || blink, blink, blinkStart: Date.now() } });
+    await saveLive({ camera: { ...camera, on: camera.on || blink, blink, blinkStart: Date.now(), showAt: null } });
     return { ok: true, blink };
   },
 

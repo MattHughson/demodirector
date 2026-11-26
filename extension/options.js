@@ -168,7 +168,6 @@ function renderSettings(state) {
   }
   document.documentElement.style.setProperty('--accent', s.lowerThird.accent);
   $('#device').value = s.camera.deviceId || '';
-  $('#preview').classList.toggle('mirror', s.camera.mirror !== false);
   const pv = document.querySelector('.preview');
   pv.style.setProperty('--ring', s.camera.ringColor || '#ffffff');
   pv.style.setProperty('--ring-w', `${Number(s.camera.ringWidth ?? 3)}px`);
@@ -222,7 +221,7 @@ $('#topicHide').onclick = () => send({ type: 'topic.hide' });
 
 // ----- camera -----
 
-let previewStream = null;
+let previewFrame = null;
 const camStatus = (t) => ($('#camStatus').textContent = t);
 
 async function listDevices() {
@@ -250,33 +249,23 @@ $('#grant').onclick = async () => {
   }
 };
 
-async function stopPreview() {
-  previewStream?.getTracks().forEach((t) => t.stop());
-  previewStream = null;
-  $('#preview').srcObject = null;
+// The preview is the real camera frame, so it shows the background, mirror and device exactly as on stage.
+function stopPreview() {
+  previewFrame?.remove();
+  previewFrame = null;
   $('#previewBtn').textContent = 'Preview';
 }
-
-$('#previewBtn').onclick = async () => {
-  if (previewStream) return stopPreview();
-  try {
-    const id = $('#device').value;
-    previewStream = await navigator.mediaDevices.getUserMedia({ video: id ? { deviceId: { exact: id } } : true });
-    $('#preview').srcObject = previewStream;
-    $('#previewBtn').textContent = 'Stop preview';
-    listDevices();
-  } catch (e) {
-    camStatus(`Preview failed: ${e.name}`);
-  }
+$('#previewBtn').onclick = () => {
+  if (previewFrame) return stopPreview();
+  previewFrame = Object.assign(document.createElement('iframe'), { src: chrome.runtime.getURL('camera.html'), allow: 'camera' });
+  $('#previewBox').append(previewFrame);
+  $('#previewBtn').textContent = 'Stop preview';
+  listDevices();
 };
 
 $('#device').onchange = async () => {
   await send({ type: 'settings.update', patch: { camera: { deviceId: $('#device').value } } });
-  status('Camera saved');
-  if (previewStream) {
-    await stopPreview();
-    $('#previewBtn').click();
-  }
+  status('Camera saved'); // the preview frame restarts on the new device by itself
 };
 navigator.mediaDevices.addEventListener('devicechange', listDevices);
 listDevices();
@@ -406,10 +395,11 @@ function renderTabs(state) {
         <label>Camera on arrival <select name="cmode">
           <option value="keep">Keep as is</option><option value="on">On</option><option value="blink">On + blink</option><option value="off">Off</option>
         </select></label>
+        <label title="Hold the camera hidden for this long after arriving, then fade it in">Camera delay (s) <input type="number" name="cdelay" min="0" max="600" step="0.5" placeholder="0"></label>
         <label>Time budget <input type="text" name="minutes" placeholder="m:ss" inputmode="decimal"></label>
         <span class="campos"></span>
       </div>
-      <label class="notes">Talking points <textarea name="notes" rows="2" placeholder="What to say and do on this screen"></textarea></label>`;
+      <div class="notes"><span>Talking points</span></div>`;
     const $c = (q) => card.querySelector(q);
     const label = $c('[name=label]');
     const url = $c('[name=url]');
@@ -417,8 +407,18 @@ function renderTabs(state) {
     url.value = t.url || '';
     url.classList.toggle('bad', !!t.url && !validUrl(t.url));
     $c('[name=cmode]').value = t.camera?.mode || 'keep';
+    const cdelay = $c('[name=cdelay]');
+    cdelay.value = t.camera?.delay || '';
+    const delayable = () => ['on', 'blink'].includes($c('[name=cmode]').value);
+    cdelay.disabled = !delayable();
+    cdelay.onchange = () => update({ camera: { ...(current.settings.tabs[i].camera || {}), delay: Math.max(0, Math.min(600, Number(cdelay.value) || 0)) } });
     $c('[name=minutes]').value = fmtMin(Number(t.minutes) || 0);
-    $c('[name=notes]').value = t.notes || '';
+    const notesEd = DDRich.editor({
+      value: t.notes || '',
+      placeholder: 'What to say and do on this screen. Type "- " for bullets.',
+      onSave: (html) => update({ notes: html }),
+    });
+    $c('.notes').append(notesEd.el);
     const pos = t.camera?.pos;
     const campos = $c('.campos');
     if (pos) {
@@ -448,9 +448,11 @@ function renderTabs(state) {
     };
     label.onchange = commitTab;
     url.onchange = commitTab;
-    $c('[name=cmode]').onchange = (e) => update({ camera: { ...(current.settings.tabs[i].camera || {}), mode: e.target.value } });
+    $c('[name=cmode]').onchange = (e) => {
+      cdelay.disabled = !delayable();
+      update({ camera: { ...(current.settings.tabs[i].camera || {}), mode: e.target.value } });
+    };
     $c('[name=minutes]').onchange = (e) => update({ minutes: parseMin(e.target.value) });
-    $c('[name=notes]').onchange = (e) => update({ notes: e.target.value });
     const clear = $c('[data-clearpos]');
     if (clear) clear.onclick = () => {
       const { pos: _p, size: _s, ...rest } = current.settings.tabs[i].camera || {};

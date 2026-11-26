@@ -44,6 +44,12 @@ Prefer a one-off installer? `cd streamdeck && npm install && npm run pack` makes
 
 If Chrome isn't connected, every key shows **OFFLINE · Chrome?**, and a press shows the ⚠︎ alert.
 
+## Ready-made profile
+
+Once the plugin is installed, double-click **`streamdeck/Demo Director.streamDeckProfile`** in Finder. The Stream Deck app imports it as a profile called *Demo Director*, with the layout below and every key already configured (veil slots, topic modes, directions). Switch to it from the profile menu at the top of the Stream Deck window.
+
+It's built for the **Stream Deck MK.2**. To regenerate it (e.g. after changing the layout in `make-profile.mjs`), run `npm run profile`.
+
 ## Suggested MK.2 layout (15 keys)
 
 | | | | | |

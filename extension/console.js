@@ -60,7 +60,13 @@ function renderCamera({ camera, settings }) {
   let big = camera.on ? 'On' : 'Off';
   let sub = camera.on ? `Size ${sizeLabel(camera.size)}` : 'Not visible to the audience';
   let hiddenPhase = false;
-  if (camera.on && camera.blink) {
+  const wait = camera.on && camera.showAt ? camera.showAt - Date.now() : 0;
+  if (wait > 0) {
+    big = 'Starting…';
+    sub = `Appears in ${Math.ceil(wait / 1000)}s${camera.blink ? ', then blinks' : ''} · size ${sizeLabel(camera.size)}`;
+    hiddenPhase = true;
+    blinkTimer = setTimeout(() => renderCamera(state), Math.min(1000, wait) + 10);
+  } else if (camera.on && camera.blink) {
     const ms = secs * 1000;
     const elapsed = Math.max(0, Date.now() - camera.blinkStart);
     hiddenPhase = Math.floor(elapsed / ms) % 2 === 1;
@@ -74,7 +80,8 @@ function renderCamera({ camera, settings }) {
   $('#slCamText').textContent = camera.on ? 'Camera on' : 'Camera off';
   $('#slBlink').classList.toggle('on', camera.blink);
   $('#slBlink').classList.toggle('blink-hidden', hiddenPhase);
-  $('#slBlinkText').textContent = camera.on && camera.blink ? sub.split(' · ')[0] : 'Blink';
+  $('#slCamText').textContent = wait > 0 ? `On in ${Math.ceil(wait / 1000)}s` : $('#slCamText').textContent;
+  $('#slBlinkText').textContent = camera.on && camera.blink && wait <= 0 ? sub.split(' · ')[0] : 'Blink';
   document.querySelectorAll('#slSize [data-s]').forEach((x) => x.classList.toggle('on', x.dataset.s === camera.size));
   $('#camBig').textContent = big;
   $('#camSub').textContent = sub;
@@ -208,6 +215,7 @@ function renderTimers() {
     $('#nsTime').textContent = '';
     $('#nsBar').style.width = '0';
     $('#nsNotes').textContent = '';
+    $('#nsNotes').dataset.src = '';
     $('#nsNotes').classList.add('empty');
   } else {
     const id = segKey(seg);
@@ -218,8 +226,13 @@ function renderTimers() {
     $('#nsLabel').textContent = seg.label || seg.url;
     $('#nsTime').textContent = timeText(id, seg.minutes);
     $('#nsBar').style.width = budget ? `${Math.min(100, (spent(id) / budget) * 100)}%` : '0';
-    $('#nsNotes').textContent = seg.notes || 'No talking points for this segment. Add some in Settings → Segments.';
-    $('#nsNotes').classList.toggle('empty', !seg.notes);
+    // Only re-render when the notes change (renderTimers runs every second).
+    const html = DDRich.toHtml(seg.notes) || 'No talking points for this segment. Add some in Settings → Segments.';
+    if ($('#nsNotes').dataset.src !== html) {
+      $('#nsNotes').innerHTML = html;
+      $('#nsNotes').dataset.src = html;
+    }
+    $('#nsNotes').classList.toggle('empty', DDRich.isEmpty(seg.notes));
   }
   // Slides mode: the deck segment's timer next to the slide number
   const st = $('#slSegTime');

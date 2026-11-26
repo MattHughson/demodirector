@@ -67,6 +67,7 @@ Useful pages (open them in a tab):
 | 4.2 | Console → Camera **On / off**. Look at the Studio tab. | A round bubble with Matt's camera appears top-right, at the medium size (240px). **No new permission prompt appears.** If one does, report it as FAIL. |
 | 4.3 | Console → camera size button, three times. | The bubble cycles through S, M and L. Each change is visible within about half a second. |
 | 4.4 | Settings → Blink every = `5`. Console → **Blink**. Watch for 15 seconds. | The bubble fades out and in every 5 seconds. The console shows "Blinking · visible/hidden" with a countdown. |
+| 4.6 | Settings → Camera bubble → Background = **Solid colour**, pick a colour, then **Preview**. Then try **Blur**. | Your room is replaced by the colour (or blurred) and you stay in front, in the preview and in the page bubble. The edges around your hair and shoulders look reasonable. Note any lag. |
 | 4.5 | Turn Blink off, then the camera off. | The bubble disappears and the camera light turns off. |
 
 ## 5. Topics (lower-thirds)
@@ -112,6 +113,8 @@ Before this section, open Settings and the console as **their own windows**, not
 | 7b.3 | Switch to Storefront, then back to Studio. | Storefront: the camera goes off. Studio: the camera comes back on at the dragged spot and size. |
 | 7b.4 | Watch the console for 30+ seconds on Studio. | The Now card shows "Segment 1 / 2 · Studio" with the talking points. The timer counts up and turns amber at 0:24, then red after 0:30. The Run of show row matches. |
 | 7b.5 | Go **Live**. | The header clock starts. Dragging the bubble does nothing. |
+| 7b.8 | Set a segment's Camera on arrival = **On + blink** with **Camera delay** `3`. Switch to its tab. | For about 3s there's no bubble, and the console reads "Starting… Appears in 3s" (Stream Deck Camera key: IN 3s). Then the bubble fades in and starts blinking. |
+| 7b.7 | In a segment's **Talking points**, type a line, press Enter, type `- ` and two bullet lines. Bold a word with **B** and highlight another. Click away. | The bullets appear as you type. On the segment's tab, the console's Now card shows the bold, highlight and bullets. |
 | 7b.6 | **Reset demo**. | All segment timers go back to 0:00, and the clock restarts. |
 
 ## 8. Backup
@@ -149,6 +152,7 @@ Before this section, open Settings and the console as **their own windows**, not
 | 10.6 | **[MATT]** Add **Topic** set to "Show a specific step" → 4, and press it. | Step 4 appears on the page, and the key turns orange with ON AIR. |
 | 10.7 | **[MATT]** Add **Reset demo**. Tap it, then hold it for 1s. | Tap: nothing happens. Hold: HOLD…, then a ✓, and the demo resets. |
 | 10.8 | **[MATT]** Add **Tab: Next** and stay on a segment past 80% of its budget. | The key shows the next tab's name and turns amber, then red, with the time. |
+| 10.10 | **[MATT]** Double-click `streamdeck/Demo Director.streamDeckProfile`. | The Stream Deck app imports a *Demo Director* profile with all 15 keys laid out as in `streamdeck/README.md`. If it refuses or keys show "?", note the exact message. |
 | 10.9 | **[MATT]** Quit Chrome. | The keys go OFFLINE. Reopen Chrome and they come back on their own. |
 
 ## Report format

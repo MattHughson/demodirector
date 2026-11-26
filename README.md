@@ -69,10 +69,12 @@ Each demo tab is a **segment**. In **Settings → Segments**, each one has:
 
 - **Tab:** a label and URL, in order. Reset demo rebuilds exactly these tabs (see below).
 - **Camera on arrival:** Keep / On / On + blink / Off. This is applied whenever that tab comes on screen, and the camera buttons still override it until the next segment.
+- **Camera delay (s):** for On and On + blink, the bubble stays hidden this long after you arrive, then fades in. Blink starts its cycle when it appears. The camera is already streaming, so there's no lag. Use it so the bubble doesn't jump straight across when you change screens. The console and the Stream Deck Camera key show "Appears in 3s". Pressing Camera or Blink cancels the delay.
+- **Background** (Settings → Camera bubble): *Real background*, *Solid colour* (pick the colour) or *Blur*. It replaces the room behind you live, using Google's MediaPipe person segmentation bundled in `extension/vendor/mediapipe`. It runs on your Mac and nothing is uploaded. **Preview** in Settings shows the result.
 - **Ring colour / width** (Settings → Camera bubble) set the frame around the bubble; width 0 removes it.
 - **Camera spot:** open the tab in **Rehearse** mode and drag the bubble where you want it. Resize it from its orange handle. It snaps to the nearest corner and saves to that segment. **Reset spot** in Settings returns it to the default. Dragging is locked in Live.
 - **Time budget:** `m:ss` or minutes.
-- **Talking points:** what to say and do on this screen.
+- **Talking points:** what to say and do on this screen. A rich-text box with **bold**, *italic*, underline, highlight, bulleted and numbered lists. Typing `- ` or `1. ` at the start of a line starts a list, and ⌘B / ⌘I / ⌘U work. Pasted text comes in plain. The console shows the formatting.
 
 In the console, the **Now** card shows the current segment's talking points and its timer against the budget. The timer turns amber at 80% and red when over. **Run of show** lists each segment's time, and the header shows a total clock from when you went Live. Time counts only while a segment's tab is on screen and adds up across visits. **Reset demo** zeroes it. On the Google Slides segment, the console shows the deck's speaker notes instead of talking points, with the segment timer beside the slide number.
 
