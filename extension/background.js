@@ -14,7 +14,34 @@
 //   topic:    { index: 0-10, shown }
 //   slack:    { shown, at }
 
-const PAGE_MATCHES = ['https://*.app.github.dev/*', 'http://localhost:3333/*'];
+// Built-in sites; any other demo site (e.g. the storefront) is added at runtime
+// once you allow it in Settings → Demo tabs.
+const STATIC_MATCHES = ['https://*.app.github.dev/*', 'http://localhost:3333/*'];
+const DYNAMIC_SCRIPT_ID = 'dd-demo-sites';
+
+async function pageMatches() {
+  const { origins = [] } = await chrome.permissions.getAll();
+  return [...new Set([...STATIC_MATCHES, ...origins])];
+}
+
+// Keep one dynamic content-script registration covering every site you've allowed.
+async function syncDynamicSites() {
+  const { origins = [] } = await chrome.permissions.getAll();
+  const extra = origins.filter((o) => !STATIC_MATCHES.includes(o));
+  const existing = await chrome.scripting.getRegisteredContentScripts({ ids: [DYNAMIC_SCRIPT_ID] });
+  if (existing.length) await chrome.scripting.unregisterContentScripts({ ids: [DYNAMIC_SCRIPT_ID] });
+  if (!extra.length) return;
+  const files = chrome.runtime.getManifest().content_scripts[0].js;
+  await chrome.scripting.registerContentScripts([
+    { id: DYNAMIC_SCRIPT_ID, matches: extra, js: files, runAt: 'document_start', persistAcrossSessions: true },
+  ]);
+  // Also bring already-open tabs on those sites to life (the script guards against double-injection).
+  const tabs = await chrome.tabs.query({ url: extra });
+  for (const t of tabs) chrome.scripting.executeScript({ target: { tabId: t.id }, files }).catch(() => {});
+}
+
+chrome.permissions.onAdded.addListener(syncDynamicSites);
+chrome.permissions.onRemoved.addListener(syncDynamicSites);
 const EXPORT_VERSION = 2;
 const SIZES = ['s', 'm', 'l'];
 
@@ -43,7 +70,14 @@ let defaultsPromise;
 function loadDefaults() {
   defaultsPromise ??= Promise.all(
     ['topics.json', 'slack-toast.json'].map((f) => fetch(chrome.runtime.getURL(f)).then((r) => r.json()))
-  ).then(([topics, slack]) => ({ camera: CAMERA_DEFAULTS, topics, lowerThird: LOWER_THIRD_DEFAULTS, slack }));
+  ).then(([topics, slack]) => ({
+    camera: CAMERA_DEFAULTS,
+    topics,
+    lowerThird: LOWER_THIRD_DEFAULTS,
+    slack,
+    tabs: [], // [{ label, url }] — the demo's tabs, in order
+    resetTabs: true, // Reset also rebuilds the demo window's tabs
+  }));
   return defaultsPromise;
 }
 
@@ -53,6 +87,96 @@ function merge(base, over) {
   const out = { ...base };
   for (const [k, v] of Object.entries(over)) out[k] = merge(base[k], v);
   return out;
+}
+
+// ---------- demo tabs ----------
+
+// A tab "is" a demo tab if it's on the same origin and at or below the
+// configured path, so /structure/drops still matches after you click around.
+function tabMatches(tabUrl, cfgUrl) {
+  try {
+    const t = new URL(tabUrl);
+    const c = new URL(cfgUrl);
+    const base = c.pathname.replace(/\/+$/, '');
+    return t.origin === c.origin && (t.pathname === c.pathname || t.pathname.startsWith(`${base}/`) || base === '');
+  } catch {
+    return false;
+  }
+}
+
+// The demo window is the last normal browser window you used (never the console popup).
+async function demoWindow() {
+  try {
+    return await chrome.windows.getLastFocused({ windowTypes: ['normal'] });
+  } catch {
+    return null;
+  }
+}
+
+// Pair each configured tab with an open tab in the window (each open tab used once).
+function pairTabs(cfg, tabs) {
+  const used = new Set();
+  return cfg.map((c) => {
+    const tab = tabs.find((t) => !used.has(t.id) && tabMatches(t.url || t.pendingUrl || '', c.url));
+    if (tab) used.add(tab.id);
+    return { ...c, tab };
+  });
+}
+
+const configuredTabs = (settings) => settings.tabs.filter((t) => /^https?:\/\/\S+$/.test(t.url || ''));
+
+async function tabsStatus() {
+  const { settings } = await loadState();
+  const win = await demoWindow();
+  const tabs = win ? await chrome.tabs.query({ windowId: win.id }) : [];
+  const pairs = pairTabs(configuredTabs(settings), tabs);
+  return {
+    windowId: win?.id,
+    tabs: pairs.map((p) => ({ label: p.label, url: p.url, open: !!p.tab, active: !!p.tab?.active, tabId: p.tab?.id })),
+    extra: tabs.filter((t) => !pairs.some((p) => p.tab?.id === t.id)).length,
+  };
+}
+
+async function rebuildTabs() {
+  const { settings } = await loadState();
+  const cfg = configuredTabs(settings);
+  if (!cfg.length) return { ok: false, error: 'No demo tabs configured' }; // never close everything
+  const win = await demoWindow();
+  if (!win) return { ok: false, error: 'No browser window' };
+  const tabs = await chrome.tabs.query({ windowId: win.id });
+  const pairs = pairTabs(cfg, tabs);
+
+  // Open / restart first, close after, so the window never empties out.
+  const ids = [];
+  for (const p of pairs) {
+    if (p.tab) {
+      await chrome.tabs.update(p.tab.id, { url: p.url });
+      ids.push(p.tab.id);
+    } else {
+      ids.push((await chrome.tabs.create({ windowId: win.id, url: p.url, active: false })).id);
+    }
+  }
+  await chrome.tabs.move(ids, { index: 0 });
+  const keep = new Set(ids);
+  const extra = tabs.filter((t) => !keep.has(t.id)).map((t) => t.id);
+  if (extra.length) await chrome.tabs.remove(extra);
+  await chrome.tabs.update(ids[0], { active: true });
+  return { ok: true, opened: pairs.filter((p) => !p.tab).length, closed: extra.length };
+}
+
+async function stepTab(delta) {
+  const { settings } = await loadState();
+  const win = await demoWindow();
+  if (!win) return { ok: false };
+  const tabs = await chrome.tabs.query({ windowId: win.id });
+  // Cycle through the demo tabs if any are configured and open; otherwise all tabs.
+  let ring = pairTabs(configuredTabs(settings), tabs).filter((p) => p.tab).map((p) => p.tab);
+  if (!ring.length) ring = tabs;
+  if (!ring.length) return { ok: false };
+  const i = ring.findIndex((t) => t.active);
+  const next = ring[(i + delta + ring.length) % ring.length];
+  await chrome.tabs.update(next.id, { active: true });
+  return { ok: true };
 }
 
 // ---------- state ----------
@@ -186,11 +310,50 @@ const handlers = {
 
   // ----- stage -----
 
-  // Reset the stage: every veil on, Slack post dismissed, topic hidden. Camera untouched.
+  // Reset the demo: every veil on, Slack post dismissed, topic hidden, and (if
+  // configured) the demo window rebuilt to exactly the demo tabs. Camera untouched.
   async reset() {
-    const { topic } = await loadState();
+    const { topic, settings } = await loadState();
     await saveLive({ revealed: [], slack: { shown: false, at: 0 }, topic: { ...topic, shown: false } });
+    const tabs = settings.resetTabs && configuredTabs(settings).length ? await rebuildTabs() : null;
+    return { ok: true, tabs };
+  },
+
+  // ----- demo tabs -----
+
+  async 'tabs.status'() {
+    return { ok: true, ...(await tabsStatus()) };
+  },
+
+  async 'tabs.rebuild'() {
+    return rebuildTabs();
+  },
+
+  async 'tab.next'() {
+    return stepTab(1);
+  },
+
+  async 'tab.prev'() {
+    return stepTab(-1);
+  },
+
+  async 'tab.activate'({ index }) {
+    const st = await tabsStatus();
+    const t = st.tabs[index];
+    if (!t) return { ok: false };
+    if (t.tabId) await chrome.tabs.update(t.tabId, { active: true });
+    else if (st.windowId) await chrome.tabs.create({ windowId: st.windowId, url: t.url, active: true });
     return { ok: true };
+  },
+
+  // Snapshot the demo window's current web tabs as the demo tab list.
+  async 'tabs.capture'() {
+    const win = await demoWindow();
+    if (!win) return { ok: false, error: 'No browser window' };
+    const tabs = (await chrome.tabs.query({ windowId: win.id })).filter((t) => /^https?:/.test(t.url || ''));
+    const list = tabs.map((t) => ({ label: (t.title || new URL(t.url).host).slice(0, 40), url: t.url }));
+    await handlers['settings.update']({ patch: { tabs: list } });
+    return { ok: true, count: list.length };
   },
 
   async 'mode.set'({ mode }) {
@@ -386,7 +549,7 @@ export function dispatch(action) {
 async function broadcast() {
   const state = await loadState();
   const msg = { type: 'state', state };
-  const tabs = await chrome.tabs.query({ url: PAGE_MATCHES });
+  const tabs = await chrome.tabs.query({ url: await pageMatches() });
   await Promise.all(tabs.map((t) => chrome.tabs.sendMessage(t.id, msg).catch(() => {})));
   chrome.runtime.sendMessage(msg).catch(() => {}); // popup / options, if open
   await updateBadge(state);
@@ -440,6 +603,8 @@ const COMMANDS = {
   'topic-toggle': { type: 'topic.toggle' },
   'slack-ping': { type: 'slack.toggle' },
   'open-console': { type: 'console.open' },
+  'tab-next': { type: 'tab.next' },
+  'tab-prev': { type: 'tab.prev' },
 };
 
 chrome.commands.onCommand.addListener((command, tab) => {
@@ -456,10 +621,11 @@ chrome.commands.onCommand.addListener((command, tab) => {
 chrome.runtime.onInstalled.addListener(async () => {
   // Content scripts don't auto-inject into tabs that were already open.
   const files = chrome.runtime.getManifest().content_scripts[0].js;
-  const tabs = await chrome.tabs.query({ url: PAGE_MATCHES });
+  const tabs = await chrome.tabs.query({ url: STATIC_MATCHES });
   for (const t of tabs) {
     chrome.scripting.executeScript({ target: { tabId: t.id }, files }).catch(() => {});
   }
+  await syncDynamicSites();
   updateBadge(await loadState());
 });
 

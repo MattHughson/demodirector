@@ -133,7 +133,46 @@ function render(s) {
   renderTopics(s);
   renderVeils(s);
   renderSlack(s);
+  refreshTabs(); // settings (tab list) may have changed
 }
+
+// ---------- demo tabs ----------
+
+async function renderTabs() {
+  const st = await send({ type: 'tabs.status' });
+  const root = $('#tablist');
+  root.replaceChildren();
+  if (!st?.tabs?.length) {
+    root.innerHTML = '<div class="msg">No demo tabs set. Add them in Settings → Demo tabs. Prev/Next will cycle all tabs until then.</div>';
+    return;
+  }
+  st.tabs.forEach((t, i) => {
+    const b = document.createElement('button');
+    b.className = `tabi${t.active ? ' active' : ''}${t.open ? '' : ' missing'}`;
+    b.innerHTML = `<span class="n">${i + 1}</span><span class="l"><b></b><small></small></span><span class="pill"></span>`;
+    b.querySelector('b').textContent = t.label || new URL(t.url).host;
+    b.querySelector('small').textContent = t.url.replace(/^https?:\/\//, '');
+    b.querySelector('.pill').textContent = t.active ? 'ON SCREEN' : t.open ? 'OPEN' : 'NOT OPEN';
+    b.title = t.open ? 'Switch to this tab' : 'Open this tab';
+    b.onclick = () => send({ type: 'tab.activate', index: i });
+    root.append(b);
+  });
+  if (st.extra) {
+    const note = document.createElement('div');
+    note.className = 'tip warn';
+    note.textContent = `${st.extra} other tab${st.extra === 1 ? '' : 's'} open in the demo window. Reset demo closes them.`;
+    root.append(note);
+  }
+}
+
+let tabsTimer = 0;
+const refreshTabs = () => {
+  clearTimeout(tabsTimer);
+  tabsTimer = setTimeout(renderTabs, 120);
+};
+['onActivated', 'onCreated', 'onRemoved', 'onMoved', 'onAttached', 'onDetached'].forEach((e) => chrome.tabs[e].addListener(refreshTabs));
+chrome.tabs.onUpdated.addListener((id, info) => (info.url || info.status === 'complete' || info.title) && refreshTabs());
+chrome.windows.onFocusChanged.addListener(refreshTabs);
 
 // ---------- inputs ----------
 
@@ -146,6 +185,8 @@ $('#now').onclick = $('#toggle').onclick = () => send({ type: 'topic.toggle' });
 $('#prev').onclick = () => send({ type: 'topic.prev' });
 $('#next').onclick = () => send({ type: 'topic.next' });
 $('#slack').onclick = () => send({ type: 'slack.toggle' });
+$('#tabPrev').onclick = () => send({ type: 'tab.prev' });
+$('#tabNext').onclick = () => send({ type: 'tab.next' });
 $('#settings').onclick = () => chrome.runtime.openOptionsPage();
 $('#shortcuts').onclick = () => chrome.tabs.create({ url: 'chrome://extensions/shortcuts' });
 

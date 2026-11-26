@@ -51,6 +51,22 @@ The defaults are in `slack-toast.json` and can be edited in Settings, where you 
 
 **Reset** turns every veil on and hides the Slack post and the topic. The camera is left as it is.
 
+## Demo tabs and Reset demo
+
+In **Settings → Demo tabs**, list the tabs your demo needs, in order, each with a label and URL. **Use tabs from my window** captures the tabs you have open now.
+
+**Reset demo** (button, ⌃⇧0, or later the Stream Deck) works on your demo window, meaning the last normal browser window you used. It:
+
+- turns every veil on and hides the Slack post and the topic;
+- keeps each matching tab and sends it back to its starting URL, and opens any missing ones;
+- puts the tabs in your order, closes every other tab in that window, and focuses tab 1.
+
+Other windows and the console are never touched. An empty list never closes anything, and a checkbox turns the tab rebuild off. A tab matches if it's on the same site at or below the URL's path (e.g. `/structure/drops/harbor-line` matches `/structure/drops`).
+
+**Other sites (e.g. the storefront):** Demo Director runs on `localhost:3333` and `*.app.github.dev` out of the box. When you add a demo tab on any other site, Chrome asks for access; you can also click **Allow** on that row. Once allowed, everything (veils, camera, topics, Slack post) works there too.
+
+**Next / previous tab** (shortcuts, console buttons) cycles through the demo tabs only. When screen sharing, share the **window** or **screen**, not a single tab.
+
 ## Director console (second screen)
 
 Open it from the popup (**Console**), from Settings, or with the `open-console` shortcut. Drag the window to your second monitor; it reopens in the same place next time, and opening it again just focuses it.

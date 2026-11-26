@@ -91,6 +91,22 @@
     .msg b { font-size: 15px; }
     .msg.on { border-color: var(--accent); }
 
+    /* Tabs */
+    .tablist { display: grid; gap: 4px; }
+    .tabi { display: grid; grid-template-columns: 26px 1fr auto; gap: 10px; align-items: center; padding: 8px 10px; border-radius: 10px;
+      border: 1px solid transparent; background: transparent; text-align: left; color: var(--muted); }
+    .tabi:hover { background: var(--card2); }
+    .tabi .n { font-weight: 800; text-align: right; font-variant-numeric: tabular-nums; }
+    .tabi .l { display: grid; min-width: 0; }
+    .tabi .l b { color: var(--text); font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .tabi .l small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .tabi.active { background: var(--card2); border-color: var(--accent); }
+    .tabi.active .n { color: var(--accent); }
+    .tabi.missing { opacity: .55; }
+    .tip { font-size: 13px; color: var(--muted); display: grid; gap: 4px; }
+    .tip b { color: var(--text); font-weight: 600; }
+    .warn { color: var(--warn); }
+
     .foot { margin-top: 14px; color: var(--muted); font-size: 12px; display: flex; gap: 12px; flex-wrap: wrap; justify-content: space-between; }
     .foot button { background: none; border: 0; color: var(--muted); text-decoration: underline; padding: 0; }
   </style>
@@ -101,7 +117,7 @@
     <kbd data-cmd="toggle-mode"></kbd>
     <span class="spacer"></span>
     <span class="conn" id="conn" title="Stream Deck plugin arrives in phase 4"><i></i><span>Stream Deck: not connected</span></span>
-    <button class="reset" id="reset">Reset stage <kbd data-cmd="reset"></kbd></button>
+    <button class="reset" id="reset">Reset demo <kbd data-cmd="reset"></kbd></button>
   </header>
 
   <main>
@@ -136,6 +152,19 @@
     </div>
 
     <div class="col">
+    <section>
+      <h2>Tabs <span><kbd data-cmd="tab-prev"></kbd> prev · next <kbd data-cmd="tab-next"></kbd></span></h2>
+      <div class="tablist" id="tablist"></div>
+      <div class="row" style="grid-template-columns: 1fr 1fr">
+        <button class="btn" id="tabPrev"><span>◀ Prev tab</span></button>
+        <button class="btn" id="tabNext"><span>Next tab ▶</span></button>
+      </div>
+      <div class="tip">
+        <span>Chrome's own keys: <b>⌃Tab</b> next · <b>⌃⇧Tab</b> previous · <b>⌘1–8</b> jump to tab N</span>
+        <span class="warn">Share the <b>window</b> or <b>screen</b>, not a single tab, or the audience won't follow you between tabs.</span>
+      </div>
+    </section>
+
     <section>
       <h2>Topic <span><kbd data-cmd="topic-prev"></kbd> prev · next <kbd data-cmd="topic-next"></kbd></span></h2>
       <button class="now" id="now" title="Show / hide current topic"></button>

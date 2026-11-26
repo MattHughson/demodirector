@@ -75,8 +75,8 @@ function render(state) {
 
 document.querySelectorAll('.mode button').forEach((b) => (b.onclick = () => send({ type: 'mode.set', mode: b.dataset.mode })));
 $('#reset').onclick = async () => {
-  await send({ type: 'reset' });
-  status('Stage reset: veils on, Slack post and topic hidden');
+  const res = await send({ type: 'reset' });
+  status(res.tabs?.ok ? `Demo reset: ${res.tabs.opened} opened, ${res.tabs.closed} closed` : 'Stage reset: veils on, Slack post and topic hidden');
 };
 
 $('#export').onclick = async () => {
@@ -135,6 +135,7 @@ function renderSettings(state) {
   $('#device').value = s.camera.deviceId || '';
   $('#preview').classList.toggle('mirror', s.camera.mirror !== false);
   renderTopics(state);
+  renderTabs(state);
   renderAvatar();
 }
 
@@ -294,4 +295,107 @@ $('#chime').onclick = () => {
     o.start(t0 + dt);
     o.stop(t0 + dt + 0.5);
   });
+};
+
+// ----- demo tabs -----
+
+const validUrl = (u) => /^https?:\/\/[^\s]+$/.test(u);
+
+// Chrome permission pattern for a demo tab's site, e.g. https://store.example.com/*
+function originPattern(u) {
+  try {
+    return validUrl(u) ? `${new URL(u).origin}/*` : null;
+  } catch {
+    return null;
+  }
+}
+
+// Must run inside a click/change handler (Chrome requires a user gesture).
+async function allowSites(urls) {
+  const origins = [...new Set(urls.map(originPattern).filter(Boolean))];
+  if (!origins.length) return true;
+  const missing = [];
+  for (const o of origins) if (!(await chrome.permissions.contains({ origins: [o] }))) missing.push(o);
+  if (!missing.length) return true;
+  try {
+    const ok = await chrome.permissions.request({ origins: missing });
+    status(ok ? 'Site access granted' : 'Site access not granted: overlays won\'t run there');
+    return ok;
+  } catch {
+    return false;
+  }
+}
+
+function saveTabs(list) {
+  return send({ type: 'settings.update', patch: { tabs: list } }).then(() => status('Saved'));
+}
+
+function renderTabs(state) {
+  const root = $('#tabs');
+  if (root.contains(document.activeElement)) return;
+  const list = state.settings.tabs;
+  root.replaceChildren();
+  if (!list.length) {
+    root.innerHTML = '<p class="muted" style="margin:0">No demo tabs yet. Reset will leave your tabs alone until you add some.</p>';
+  }
+  list.forEach((t, i) => {
+    const row = document.createElement('div');
+    row.className = 'tabrow';
+    row.innerHTML = `<span class="n">${i + 1}</span>
+      <input type="text" name="label" placeholder="Label, e.g. Studio" aria-label="Label">
+      <input type="text" name="url" placeholder="https://…" aria-label="URL" spellcheck="false">
+      <span class="ops"><button class="primary" data-allow hidden title="Let Demo Director run on this site">Allow</button><button data-d="-1" title="Move up">▲</button><button data-d="1" title="Move down">▼</button><button class="danger" data-x title="Remove">✕</button></span>`;
+    const label = row.querySelector('[name=label]');
+    const url = row.querySelector('[name=url]');
+    label.value = t.label || '';
+    url.value = t.url || '';
+    url.classList.toggle('bad', !!t.url && !validUrl(t.url));
+    const allow = row.querySelector('[data-allow]');
+    const pattern = originPattern(t.url || '');
+    if (pattern) {
+      chrome.permissions.contains({ origins: [pattern] }).then((has) => {
+        allow.hidden = has;
+        allow.title = `Let Demo Director run on ${pattern.replace('/*', '')}`;
+      });
+    }
+    allow.onclick = async () => {
+      if (await allowSites([url.value.trim()])) allow.hidden = true;
+    };
+    const commit = () => {
+      const next = current.settings.tabs.map((x, k) => (k !== i ? x : { label: label.value.trim(), url: url.value.trim() }));
+      url.classList.toggle('bad', !!url.value.trim() && !validUrl(url.value.trim()));
+      allowSites([url.value.trim()]); // first, while the gesture is fresh
+      saveTabs(next);
+    };
+    label.onchange = commit;
+    url.onchange = commit;
+    row.querySelectorAll('[data-d]').forEach((b) => {
+      b.onclick = () => {
+        const next = [...current.settings.tabs];
+        const j = i + Number(b.dataset.d);
+        if (j < 0 || j >= next.length) return;
+        [next[i], next[j]] = [next[j], next[i]];
+        saveTabs(next);
+      };
+    });
+    row.querySelector('[data-x]').onclick = () => saveTabs(current.settings.tabs.filter((_, k) => k !== i));
+    root.append(row);
+  });
+}
+
+$('#tabAdd').onclick = async () => {
+  await saveTabs([...current.settings.tabs, { label: '', url: '' }]);
+  setTimeout(() => [...document.querySelectorAll('#tabs [name=label]')].pop()?.focus(), 100);
+};
+$('#tabCapture').onclick = async () => {
+  const res = await send({ type: 'tabs.capture' });
+  if (res.ok) {
+    const { settings } = await send({ type: 'state.get' });
+    await allowSites(settings.tabs.map((t) => t.url));
+  }
+  status(res.ok ? `Captured ${res.count} tab${res.count === 1 ? '' : 's'}` : res.error);
+};
+$('#tabRebuild').onclick = async () => {
+  const res = await send({ type: 'tabs.rebuild' });
+  status(res.ok ? `Tabs rebuilt: ${res.opened} opened, ${res.closed} closed` : res.error);
 };

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Demo Director",
-  "version": "0.3.0",
+  "version": "0.5.0",
   "description": "Stage-manage live demos: veil parts of the page, then reveal them on cue from a Stream Deck or hotkey.",
   "minimum_chrome_version": "116",
   "permissions": [
@@ -64,7 +64,7 @@
         "default": "Ctrl+Shift+0",
         "mac": "MacCtrl+Shift+0"
       },
-      "description": "Reset the stage (veils on, Slack post + topic hidden)"
+      "description": "Reset the demo (veils on, Slack + topic hidden, demo tabs restored)"
     },
     "veil-4": {
       "description": "Toggle veil 4"
@@ -134,6 +134,12 @@
     },
     "open-console": {
       "description": "Open the Director console (second screen)"
+    },
+    "tab-next": {
+      "description": "Next demo tab"
+    },
+    "tab-prev": {
+      "description": "Previous demo tab"
     }
   },
   "web_accessible_resources": [
@@ -144,9 +150,12 @@
         "assets/*"
       ],
       "matches": [
-        "https://*.app.github.dev/*",
-        "http://localhost:3333/*"
+        "<all_urls>"
       ]
     }
+  ],
+  "optional_host_permissions": [
+    "https://*/*",
+    "http://*/*"
   ]
 }

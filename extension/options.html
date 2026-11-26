@@ -45,6 +45,13 @@
     .avatar img, .avatar .ph { width: 48px; height: 48px; border-radius: 10px; object-fit: cover; background: #4a154b; color: #fff;
       display: grid; place-items: center; font-weight: 700; }
     code { font-size: 12px; }
+    .tabs { display: grid; gap: 6px; }
+    .tabrow { display: grid; grid-template-columns: 24px minmax(120px, 1fr) 2fr auto; gap: 8px; align-items: center; }
+    .tabrow .n { font-weight: 700; text-align: center; font-variant-numeric: tabular-nums; }
+    .tabrow .ops { display: flex; gap: 4px; }
+    .tabrow .ops button { padding: 4px 8px; }
+    .tabrow input.bad { border-color: var(--live); }
+    @media (max-width: 620px) { .tabrow { grid-template-columns: 24px 1fr; } .tabrow input, .tabrow .ops { grid-column: 2; } }
     .grid input, .field textarea, .field select, .topic input, .topic select { font-weight: 400; }
     @media (max-width: 520px) { .veil { grid-template-columns: 22px 1fr; } .veil .side { grid-column: 2; justify-items: start; } }
   </style>
@@ -65,8 +72,24 @@
     <p class="muted">Each veil hides everything its selectors match. The slot number is the hotkey and Stream Deck slot. To add one, open your demo page in Rehearse mode and use <b>Pick element</b> from the toolbar popup or the Rehearse chip.</p>
     <div id="veils"></div>
     <div class="bar">
-      <button id="reset">Reset stage</button>
+      <button id="reset">Reset demo</button>
       <span id="status" class="muted"></span>
+    </div>
+  </section>
+
+  <section>
+    <h2>Demo tabs</h2>
+    <p class="muted">The tabs your demo needs, in order. <b>Reset demo</b> rebuilds your demo window (the last browser window you used) to exactly these tabs. It keeps or reopens each one at its starting URL, closes every other tab in that window, and focuses tab 1. Other windows and the console are left alone. A tab counts as a match if it's on the same site at or below the URL's path.</p>
+    <p class="muted">Demo Director runs on <code>localhost:3333</code> and <code>*.app.github.dev</code> by default. For any other site (e.g. the storefront), click <b>Allow</b> on its row so the veils, camera, topics and Slack post work there too.</p>
+    <div class="card">
+      <div class="tabs" id="tabs"></div>
+      <div class="bar">
+        <button id="tabAdd">+ Add tab</button>
+        <button id="tabCapture" title="Replace the list with the web tabs open in your last-used window">Use tabs from my window</button>
+        <button id="tabRebuild">Rebuild tabs now</button>
+      </div>
+      <label class="check"><input type="checkbox" data-path="resetTabs"> Reset demo also restores these tabs (closes all other tabs in the demo window)</label>
+      <p class="muted" style="margin:0;font-size:12px">When screen sharing, share the <b>window</b> or <b>screen</b>, not a single tab, or the audience won't follow you between tabs.</p>
     </div>
   </section>
 
