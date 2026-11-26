@@ -356,7 +356,7 @@
   }
 
   function setState(next) {
-    if (!next) return;
+    if (!next?.veils || !next.camera || !next.settings) return; // worker still starting
     state = next;
     renderCss();
     applyClasses();
@@ -379,5 +379,11 @@
       watch();
     }, { once: true });
   }
-  send({ type: 'state.get' }).then(setState);
+  // Right after an extension reload the worker may still be starting: retry briefly.
+  (async () => {
+    for (let i = 0; i < 10 && !state.settings; i++) {
+      setState(await send({ type: 'state.get' }));
+      if (!state.settings) await new Promise((r) => setTimeout(r, 200 + i * 100));
+    }
+  })();
 })();

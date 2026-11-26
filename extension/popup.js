@@ -1,6 +1,19 @@
 const send = (action) => chrome.runtime.sendMessage({ type: 'action', action });
 const $ = (s) => document.querySelector(s);
 
+// Ask the service worker for state; right after an extension reload the worker
+// may still be starting, so retry briefly instead of rendering nothing.
+async function getState(tries = 10) {
+  for (let i = 0; i < tries; i++) {
+    try {
+      const s = await chrome.runtime.sendMessage({ type: 'action', action: { type: 'state.get' } });
+      if (s && s.camera && s.settings) return s;
+    } catch {}
+    await new Promise((r) => setTimeout(r, 200 + i * 100));
+  }
+  return null;
+}
+
 function pressed(btn, on, onText, offText) {
   btn.setAttribute('aria-pressed', String(on));
   btn.textContent = on ? onText : offText;
@@ -59,5 +72,5 @@ $('#pick').onclick = async () => {
   else $('#msg').textContent = res?.error || 'Could not start picker';
 };
 
-chrome.runtime.onMessage.addListener((msg) => msg?.type === 'state' && render(msg.state));
-send({ type: 'state.get' }).then(render);
+chrome.runtime.onMessage.addListener((msg) => msg?.type === 'state' && msg.state?.camera && render(msg.state));
+getState().then((s) => s && render(s));

@@ -4,6 +4,19 @@
 
 const send = (action) => chrome.runtime.sendMessage({ type: 'action', action });
 const $ = (s) => document.querySelector(s);
+
+// Ask the service worker for state; right after an extension reload the worker
+// may still be starting, so retry briefly instead of rendering nothing.
+async function getState(tries = 10) {
+  for (let i = 0; i < tries; i++) {
+    try {
+      const s = await chrome.runtime.sendMessage({ type: 'action', action: { type: 'state.get' } });
+      if (s && s.camera && s.settings) return s;
+    } catch {}
+    await new Promise((r) => setTimeout(r, 200 + i * 100));
+  }
+  return null;
+}
 let state = null;
 let shortcuts = {};
 
@@ -311,7 +324,7 @@ $('#shortcuts').onclick = () => chrome.tabs.create({ url: 'chrome://extensions/s
 // Shortcuts can be rebound while the console is open; refresh when it regains focus.
 addEventListener('focus', loadShortcuts);
 
-chrome.runtime.onMessage.addListener((msg) => msg?.type === 'state' && render(msg.state));
+chrome.runtime.onMessage.addListener((msg) => msg?.type === 'state' && msg.state?.camera && render(msg.state));
 
 // Remember where the window lives (your second screen) for next time.
 let saveTimer = 0;
@@ -334,4 +347,5 @@ setInterval(() => {
 }, 1500);
 
 await loadShortcuts();
-render(await send({ type: 'state.get' }));
+const first = await getState();
+if (first) render(first);
