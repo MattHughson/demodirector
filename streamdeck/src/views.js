@@ -18,6 +18,15 @@ function segSpent(s, id, now) {
   return (s.segTime?.[id] || 0) + (cur?.id === id ? now - cur.since : 0);
 }
 
+// The segment you're in wants a topic: its flash delay has passed and no topic
+// has been shown since you arrived.
+function topicDue(s, now) {
+  const cur = s.segCurrent;
+  const seg = cur && (s.segments || []).find((x) => x.id === cur.id);
+  if (!seg || seg.topicCue == null || s.topic.shown) return false;
+  return now >= cur.since + seg.topicCue * 1000 && (s.topic.shownAt || 0) < cur.since;
+}
+
 // Each action: { view(state, settings, now) → keyImage options, press(state, settings) → extension action }
 export const ACTIONS = {
   veil: {
@@ -62,7 +71,17 @@ export const ACTIONS = {
 
   topic: {
     defaults: { mode: 'next', index: 1 },
-    view(s, { mode = 'next', index = 1 }) {
+    ticks: true, // flashes when the segment's topic is due
+    view(s, settings, now) {
+      const face = this.face(s, settings);
+      const { mode = 'next' } = settings;
+      if ((mode === 'toggle' || mode === 'next') && topicDue(s, now)) {
+        const lit = Math.floor(now / 1000) % 2 === 0;
+        return { ...face, bg: lit ? COLORS.accent : COLORS.idle, top: 'SHOW TOPIC' };
+      }
+      return face;
+    },
+    face(s, { mode = 'next', index = 1 }) {
       const t = s.topic;
       const titleOf = (n) => s.topics?.[n - 1]?.title || '';
       const iconOf = (n) => s.topics?.[n - 1]?.icon || 'star';

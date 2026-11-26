@@ -396,6 +396,10 @@ function renderTabs(state) {
           <option value="keep">Keep as is</option><option value="on">On</option><option value="blink">On + blink</option><option value="off">Off</option>
         </select></label>
         <label title="Hold the camera hidden for this long after arriving, then fade it in">Camera delay (s) <input type="number" name="cdelay" min="0" max="600" step="0.5" placeholder="0"></label>
+        <label title="Flash the Stream Deck topic key until you show a topic in this segment">Topic flash <select name="tflash">
+          <option value="off">No flash</option><option value="on">Flash</option>
+        </select></label>
+        <label title="How long after arriving the topic key starts flashing (0 = straight away)">Flash delay (s) <input type="number" name="tcue" min="0" max="600" step="0.5" placeholder="0"></label>
         <label>Time budget <input type="text" name="minutes" placeholder="m:ss" inputmode="decimal"></label>
         <span class="campos"></span>
       </div>
@@ -413,6 +417,19 @@ function renderTabs(state) {
     cdelay.disabled = !delayable();
     cdelay.onchange = () => update({ camera: { ...(current.settings.tabs[i].camera || {}), delay: Math.max(0, Math.min(600, Number(cdelay.value) || 0)) } });
     $c('[name=minutes]').value = fmtMin(Number(t.minutes) || 0);
+    // topicCue: null = no flash, else seconds after arrival.
+    const tflash = $c('[name=tflash]');
+    const tcue = $c('[name=tcue]');
+    const flashing = Number.isFinite(t.topicCue);
+    tflash.value = flashing ? 'on' : 'off';
+    tcue.value = flashing && t.topicCue ? t.topicCue : '';
+    tcue.disabled = !flashing;
+    const cueSecs = () => Math.max(0, Math.min(600, Number(tcue.value) || 0));
+    tflash.onchange = () => {
+      tcue.disabled = tflash.value === 'off';
+      update({ topicCue: tflash.value === 'off' ? null : cueSecs() });
+    };
+    tcue.onchange = () => update({ topicCue: cueSecs() });
     const notesEd = DDRich.editor({
       value: t.notes || '',
       placeholder: 'What to say and do on this screen. Type "- " for bullets.',

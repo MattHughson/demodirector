@@ -801,7 +801,12 @@ function bridgeSlim(s) {
     topic: { ...s.topic, count: s.settings.topics.length, title: t?.title || '', icon: t?.icon || '' },
     topics: s.settings.topics.map((x) => ({ title: x.title, icon: x.icon })),
     slack: { shown: s.slack.shown, sender: s.settings.slack.sender },
-    segments: configuredTabs(s.settings).map((x) => ({ id: segId(x), label: x.label || x.url, minutes: Number(x.minutes) || 0 })),
+    segments: configuredTabs(s.settings).map((x) => ({
+      id: segId(x),
+      label: x.label || x.url,
+      minutes: Number(x.minutes) || 0,
+      topicCue: Number.isFinite(x.topicCue) ? x.topicCue : null, // s after arrival to flash the topic key; null = never
+    })),
     segTime: s.segTime,
     segCurrent: s.segCurrent,
     liveStart: s.liveStart,

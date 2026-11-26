@@ -17594,6 +17594,12 @@ function segSpent(s, id, now) {
   const cur = s.segCurrent;
   return (s.segTime?.[id] || 0) + (cur?.id === id ? now - cur.since : 0);
 }
+function topicDue(s, now) {
+  const cur = s.segCurrent;
+  const seg = cur && (s.segments || []).find((x) => x.id === cur.id);
+  if (!seg || seg.topicCue == null || s.topic.shown) return false;
+  return now >= cur.since + seg.topicCue * 1e3 && (s.topic.shownAt || 0) < cur.since;
+}
 var ACTIONS = {
   veil: {
     defaults: { slot: 1 },
@@ -17630,7 +17636,18 @@ var ACTIONS = {
   },
   topic: {
     defaults: { mode: "next", index: 1 },
-    view(s, { mode = "next", index = 1 }) {
+    ticks: true,
+    // flashes when the segment's topic is due
+    view(s, settings2, now) {
+      const face = this.face(s, settings2);
+      const { mode = "next" } = settings2;
+      if ((mode === "toggle" || mode === "next") && topicDue(s, now)) {
+        const lit = Math.floor(now / 1e3) % 2 === 0;
+        return { ...face, bg: lit ? COLORS.accent : COLORS.idle, top: "SHOW TOPIC" };
+      }
+      return face;
+    },
+    face(s, { mode = "next", index = 1 }) {
       const t = s.topic;
       const titleOf = (n) => s.topics?.[n - 1]?.title || "";
       const iconOf = (n) => s.topics?.[n - 1]?.icon || "star";
