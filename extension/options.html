@@ -24,6 +24,28 @@
     table { border-collapse: collapse; width: 100%; }
     td { padding: 4px 8px 4px 0; vertical-align: top; }
     #status { font-size: 12px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px 14px; }
+    .grid label, .field { display: grid; gap: 4px; font-size: 12px; font-weight: 600; color: var(--muted); }
+    .grid input[type=number], select { font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--line);
+      border-radius: 6px; padding: 6px 8px; width: 100%; }
+    input[type=color] { width: 100%; height: 32px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); padding: 2px; }
+    label.check { display: flex; align-items: center; gap: 8px; font-weight: 600; color: var(--text); grid-template-columns: none; }
+    .card { padding: 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); display: grid; gap: 12px; }
+    .cam-row { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+    .preview { width: 120px; height: 120px; border-radius: 50%; overflow: hidden; background: #101828; flex: none; }
+    .preview video { width: 100%; height: 100%; object-fit: cover; }
+    .preview video.mirror { transform: scaleX(-1); }
+    .topics { display: grid; gap: 6px; }
+    .topic { display: grid; grid-template-columns: 24px 40px 150px 1fr auto; gap: 8px; align-items: center; }
+    .topic .n { font-weight: 700; text-align: center; font-variant-numeric: tabular-nums; }
+    .topic .ico { width: 36px; height: 36px; border-radius: 8px; display: grid; place-items: center; color: #fff; background: var(--accent); }
+    .topic button { padding: 4px 10px; }
+    @media (max-width: 620px) { .topic { grid-template-columns: 24px 40px 1fr; } .topic input[type=text] { grid-column: 2 / -1; } .topic button { grid-column: 2 / -1; justify-self: start; } }
+    .avatar { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+    .avatar img, .avatar .ph { width: 48px; height: 48px; border-radius: 10px; object-fit: cover; background: #4a154b; color: #fff;
+      display: grid; place-items: center; font-weight: 700; }
+    code { font-size: 12px; }
+    .grid input, .field textarea, .field select, .topic input, .topic select { font-weight: 400; }
     @media (max-width: 520px) { .veil { grid-template-columns: 22px 1fr; } .veil .side { grid-column: 2; justify-items: start; } }
   </style>
 </head>
@@ -42,14 +64,80 @@
     <p class="muted">Each veil hides everything its selectors match. The slot number is the hotkey and Stream Deck slot. To add one, open your demo page in Rehearse mode and use <b>Pick element</b> from the toolbar popup or the Rehearse chip.</p>
     <div id="veils"></div>
     <div class="bar">
-      <button id="reset">Reset stage (all veils on)</button>
+      <button id="reset">Reset stage</button>
       <span id="status" class="muted"></span>
     </div>
   </section>
 
   <section>
+    <h2>Camera bubble</h2>
+    <p class="muted">The bubble is drawn inside the shared tab, top-right. Grant access once here, since the extension asks for the camera and not each site.</p>
+    <div class="card">
+      <div class="cam-row">
+        <div class="preview"><video id="preview" autoplay muted playsinline></video></div>
+        <div style="display:grid;gap:8px;flex:1;min-width:220px">
+          <div class="bar"><button id="grant" class="primary">Grant camera access</button><button id="previewBtn">Preview</button></div>
+          <label class="field">Camera <select id="device"><option value="">System default</option></select></label>
+          <span id="camStatus" class="muted" style="font-size:12px"></span>
+        </div>
+      </div>
+      <div class="grid">
+        <label class="check"><input type="checkbox" data-path="camera.mirror"> Mirror (selfie view)</label>
+        <label>Blink every (seconds) <input type="number" min="1" max="600" data-path="camera.blinkSeconds"></label>
+        <label>Small (px) <input type="number" min="60" max="900" data-path="camera.sizes.s"></label>
+        <label>Medium (px) <input type="number" min="60" max="900" data-path="camera.sizes.m"></label>
+        <label>Large (px) <input type="number" min="60" max="900" data-path="camera.sizes.l"></label>
+        <label>Offset top (px) <input type="number" min="0" data-path="camera.offsetTop"></label>
+        <label>Offset right (px) <input type="number" min="0" data-path="camera.offsetRight"></label>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Topics (lower-thirds)</h2>
+    <p class="muted">Topic N = script step N. Shown bottom-left. Defaults come from <code>topics.json</code>.</p>
+    <div class="card">
+      <div class="topics" id="topics"></div>
+      <div class="grid">
+        <label>Accent colour <input type="color" data-path="lowerThird.accent"></label>
+        <label>Scale <input type="number" min="0.5" max="3" step="0.05" data-path="lowerThird.scale"></label>
+        <label>Offset left (px) <input type="number" min="0" data-path="lowerThird.offsetLeft"></label>
+        <label>Offset bottom (px) <input type="number" min="0" data-path="lowerThird.offsetBottom"></label>
+      </div>
+      <div class="bar"><button id="topicHide">Hide topic</button><button data-reset="topics">Restore topics.json</button></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Slack notification</h2>
+    <p class="muted">A Slack-style post that slides in top-right, placed below the camera bubble automatically. Defaults come from <code>slack-toast.json</code>.</p>
+    <div class="card">
+      <div class="avatar">
+        <span id="avatarView"></span>
+        <button id="avatarBtn">Upload avatar…</button>
+        <button id="avatarClear">Remove</button>
+        <input id="avatarFile" type="file" accept="image/*" hidden>
+      </div>
+      <div class="grid">
+        <label>Sender <input type="text" data-path="slack.sender"></label>
+        <label>Channel <input type="text" data-path="slack.channel"></label>
+        <label>Workspace <input type="text" data-path="slack.workspace"></label>
+      </div>
+      <label class="field">Message <textarea rows="3" data-path="slack.message" style="font:inherit"></textarea></label>
+      <div class="grid">
+        <label>Offset top (px) <input type="number" min="0" data-path="slack.offsetTop"></label>
+        <label>Offset right (px) <input type="number" min="0" data-path="slack.offsetRight"></label>
+        <label>Scale <input type="number" min="0.5" max="3" step="0.05" data-path="slack.scale"></label>
+        <label>Auto-hide (s, 0 = never) <input type="number" min="0" data-path="slack.autoHideSeconds"></label>
+        <label class="check"><input type="checkbox" data-path="slack.sound"> Chime</label>
+      </div>
+      <div class="bar"><button id="slackShow" class="primary">Show / dismiss</button><button id="chime">Test chime</button><button data-reset="slack">Restore slack-toast.json</button></div>
+    </div>
+  </section>
+
+  <section>
     <h2>Back up and share</h2>
-    <p class="muted">Export your veils as a JSON file to commit to the repo or hand to a colleague. Importing replaces the current list.</p>
+    <p class="muted">Export your veils and settings (topics, Slack post, camera sizes) as one JSON file to commit to the repo or hand to a colleague. Importing replaces them.</p>
     <div class="bar">
       <button id="export">Export JSON</button>
       <button id="import">Import JSON…</button>
@@ -66,6 +154,7 @@
     </div>
   </section>
 </main>
+<script src="icons.js"></script>
 <script src="options.js" type="module"></script>
 </body>
 </html>

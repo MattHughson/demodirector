@@ -1,0 +1,20 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Demo Director camera</title>
+  <style>
+    html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #101828; }
+    video { width: 100%; height: 100%; object-fit: cover; display: block; }
+    video.mirror { transform: scaleX(-1); }
+    .msg { position: absolute; inset: 0; display: grid; place-items: center; padding: 18%; text-align: center;
+      color: #f2f4f7; font: 600 12px/1.35 -apple-system, BlinkMacSystemFont, system-ui, sans-serif; }
+    .msg[hidden] { display: none; }
+  </style>
+</head>
+<body>
+  <video autoplay muted playsinline></video>
+  <div class="msg" hidden></div>
+  <script src="camera.js"></script>
+</body>
+</html>

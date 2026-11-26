@@ -1,0 +1,12 @@
+[
+  { "title": "Click what you see", "icon": "cursor" },
+  { "title": "Status from dates", "icon": "calendar" },
+  { "title": "Grouped by status", "icon": "folder" },
+  { "title": "Start from a template", "icon": "docs" },
+  { "title": "Reuse what worked", "icon": "cycle" },
+  { "title": "Fields that appear when needed", "icon": "switches" },
+  { "title": "Rules that stop bad launches", "icon": "shield" },
+  { "title": "Go straight to your part", "icon": "grid" },
+  { "title": "The creator's own view", "icon": "person" },
+  { "title": "Work on it together", "icon": "people" }
+]

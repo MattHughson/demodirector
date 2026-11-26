@@ -1,0 +1,12 @@
+{
+  "sender": "Nancy",
+  "avatar": "assets/Nancy.png",
+  "channel": "#drops",
+  "workspace": "Marlowe & Finch",
+  "message": "We're green-lighting Harbor Line for Dec 11. Can you set it up?",
+  "offsetTop": 24,
+  "offsetRight": 24,
+  "scale": 1.25,
+  "autoHideSeconds": 0,
+  "sound": false
+}

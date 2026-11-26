@@ -9,7 +9,7 @@
   window.__demoDirector = true;
 
   const CLASS_PREFIX = 'veil-';
-  let state = { veils: [], active: [], mode: 'rehearse' };
+  let state = { veils: [], active: [], mode: 'rehearse' }; // replaced by the first broadcast
   let applied = new Set(); // veil classes we currently own on <html>
 
   // ---------- veils ----------
@@ -122,6 +122,8 @@
     if (text != null) n.textContent = text;
     return n;
   };
+
+  const overlays = DDOverlays.create(ui, { send });
 
   // Rehearse chip: a reminder you're not live (also a quick way into the picker).
   const chip = el('div', 'chip');
@@ -360,6 +362,7 @@
     applyClasses();
     if (state.mode === 'live') stopPicker();
     renderChip();
+    overlays.render(state);
   }
 
   chrome.runtime.onMessage.addListener((msg) => {

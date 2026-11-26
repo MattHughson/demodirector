@@ -1,10 +1,14 @@
 {
   "manifest_version": 3,
   "name": "Demo Director",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Stage-manage live demos: veil parts of the page, then reveal them on cue from a Stream Deck or hotkey.",
   "minimum_chrome_version": "116",
-  "permissions": ["storage", "scripting", "tabs"],
+  "permissions": [
+    "storage",
+    "scripting",
+    "tabs"
+  ],
   "host_permissions": [
     "https://*.app.github.dev/*",
     "http://localhost:3333/*"
@@ -19,7 +23,12 @@
         "https://*.app.github.dev/*",
         "http://localhost:3333/*"
       ],
-      "js": ["selector.js", "content.js"],
+      "js": [
+        "selector.js",
+        "icons.js",
+        "overlays.js",
+        "content.js"
+      ],
       "run_at": "document_start"
     }
   ],
@@ -30,25 +39,111 @@
   "options_page": "options.html",
   "commands": {
     "veil-1": {
-      "suggested_key": { "default": "Ctrl+Shift+1", "mac": "MacCtrl+Shift+1" },
+      "suggested_key": {
+        "default": "Ctrl+Shift+1",
+        "mac": "MacCtrl+Shift+1"
+      },
       "description": "Toggle veil 1"
     },
     "veil-2": {
-      "suggested_key": { "default": "Ctrl+Shift+2", "mac": "MacCtrl+Shift+2" },
+      "suggested_key": {
+        "default": "Ctrl+Shift+2",
+        "mac": "MacCtrl+Shift+2"
+      },
       "description": "Toggle veil 2"
     },
     "veil-3": {
-      "suggested_key": { "default": "Ctrl+Shift+3", "mac": "MacCtrl+Shift+3" },
+      "suggested_key": {
+        "default": "Ctrl+Shift+3",
+        "mac": "MacCtrl+Shift+3"
+      },
       "description": "Toggle veil 3"
     },
     "reset": {
-      "suggested_key": { "default": "Ctrl+Shift+0", "mac": "MacCtrl+Shift+0" },
-      "description": "Reset the stage (all veils on)"
+      "suggested_key": {
+        "default": "Ctrl+Shift+0",
+        "mac": "MacCtrl+Shift+0"
+      },
+      "description": "Reset the stage (veils on, Slack post + topic hidden)"
     },
-    "veil-4": { "description": "Toggle veil 4" },
-    "veil-5": { "description": "Toggle veil 5" },
-    "veil-6": { "description": "Toggle veil 6" },
-    "toggle-mode": { "description": "Switch Rehearse / Live mode" },
-    "start-picker": { "description": "Pick an element to veil (Rehearse mode)" }
-  }
+    "veil-4": {
+      "description": "Toggle veil 4"
+    },
+    "veil-5": {
+      "description": "Toggle veil 5"
+    },
+    "veil-6": {
+      "description": "Toggle veil 6"
+    },
+    "toggle-mode": {
+      "description": "Switch Rehearse / Live mode"
+    },
+    "start-picker": {
+      "description": "Pick an element to veil (Rehearse mode)"
+    },
+    "camera-toggle": {
+      "description": "Camera bubble on / off"
+    },
+    "camera-blink": {
+      "description": "Camera blink mode on / off"
+    },
+    "camera-size": {
+      "description": "Camera size: S → M → L"
+    },
+    "topic-next": {
+      "description": "Next topic (lower-third)"
+    },
+    "topic-prev": {
+      "description": "Previous topic (lower-third)"
+    },
+    "topic-toggle": {
+      "description": "Show / hide current topic"
+    },
+    "slack-ping": {
+      "description": "Slack notification show / dismiss (bind to ⌃⇧4)"
+    },
+    "topic-1": {
+      "description": "Show topic 1"
+    },
+    "topic-2": {
+      "description": "Show topic 2"
+    },
+    "topic-3": {
+      "description": "Show topic 3"
+    },
+    "topic-4": {
+      "description": "Show topic 4"
+    },
+    "topic-5": {
+      "description": "Show topic 5"
+    },
+    "topic-6": {
+      "description": "Show topic 6"
+    },
+    "topic-7": {
+      "description": "Show topic 7"
+    },
+    "topic-8": {
+      "description": "Show topic 8"
+    },
+    "topic-9": {
+      "description": "Show topic 9"
+    },
+    "topic-10": {
+      "description": "Show topic 10"
+    }
+  },
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "camera.html",
+        "camera.js",
+        "assets/*"
+      ],
+      "matches": [
+        "https://*.app.github.dev/*",
+        "http://localhost:3333/*"
+      ]
+    }
+  ]
 }

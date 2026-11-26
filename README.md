@@ -7,8 +7,8 @@ Stage-manage live product demos from a Stream Deck: hide parts of the page and r
 | Phase | What | State |
 |---|---|---|
 | 1 | Extension core: veils, element picker, Rehearse/Live, badge, hotkeys, export/import | ✅ done |
-| 2 | Camera bubble (device picker, on/off, blink, S/M/L), 10 topic lower-thirds, Slack notification | next |
-| 3 | Director console (second-screen window) | |
+| 2 | Camera bubble (device picker, on/off, blink, S/M/L), 10 topic lower-thirds, Slack notification | ✅ done |
+| 3 | Director console (second-screen window) | next |
 | 4 | Stream Deck plugin (native, WebSocket bridge, live key states) | |
 | later | Fill drop (Sanity patch) | |
 
@@ -35,6 +35,22 @@ Click **Pick element** in the toolbar popup, or click the `REHEARSE` chip at the
 
 Selectors prefer `data-testid` / `data-ui` / stable ids over generated class names. Per-row ids such as `pane-item-42` become prefix matches. **+ Add another** adds more elements to the same veil (e.g. Live + Upcoming + Past). The matches are outlined live, and you can edit the selector text before saving.
 
+## Camera bubble
+
+1. Open **Settings → Camera bubble → Grant camera access** once. The permission belongs to the extension, so it works on any codespace URL. Then pick your camera.
+2. The bubble shows top-right in S / M / L (sizes are in Settings). **Blink** shows it for N seconds and hides it for N seconds (30 by default, set in Settings).
+3. The camera only streams in the visible tab, and turning the bubble off releases the camera.
+
+## Topics (lower-thirds)
+
+The 10 script steps come from `topics.json` and can be edited in Settings (title and icon). They appear bottom-left as *STEP N · Title*. Use **◀ / ▶** to step through them and the topic button to show or hide the current one.
+
+## Slack notification
+
+The defaults are in `slack-toast.json` and can be edited in Settings, where you can also upload the avatar. The post slides in from the top-right and sits below the camera bubble when it's on. Clicking it dismisses it. It stays until dismissed, unless `autoHideSeconds` is set. The optional chime is synthesised in the page, so tab-audio sharing picks it up.
+
+**Reset** turns every veil on and hides the Slack post and the topic. The camera is left as it is.
+
 ## Modes
 
 - **Rehearse**: picker enabled, a small chip on the page, grey badge.
@@ -48,7 +64,8 @@ The badge number is how many veils are on, so you know the state before going li
 |---|---|
 | ⌃⇧1 / ⌃⇧2 / ⌃⇧3 | Toggle veil in slot 1 / 2 / 3 |
 | ⌃⇧0 | Reset (all veils on) |
-| unbound | Veils 4–6, Rehearse/Live, start picker |
+| unbound | Veils 4–6, Rehearse/Live, start picker, camera on/blink/size, topic next/prev/toggle, topics 1–10 |
+| bind to ⌃⇧4 | Slack notification show / dismiss |
 
 Chrome only allows 4 suggested keys per extension. Bind the rest in `chrome://extensions/shortcuts`. Slot numbers are the veil order on the settings page.
 

@@ -1,7 +1,20 @@
 const send = (action) => chrome.runtime.sendMessage({ type: 'action', action });
 const $ = (s) => document.querySelector(s);
 
+function pressed(btn, on, onText, offText) {
+  btn.setAttribute('aria-pressed', String(on));
+  btn.textContent = on ? onText : offText;
+}
+
 function render(state) {
+  const { camera, topic, slack, settings } = state;
+  pressed($('#camOn'), camera.on, 'Camera on', 'Camera off');
+  pressed($('#camBlink'), camera.blink, `Blinking ${settings.camera.blinkSeconds}s`, 'Blink');
+  document.querySelectorAll('#camSize button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.size === camera.size)));
+  const t = settings.topics[topic.index - 1];
+  pressed($('#topicName'), topic.shown, `${topic.index} · ${t?.title}`, t ? `${topic.index} · ${t.title} (hidden)` : 'No topic yet: press ▶');
+  pressed($('#slack'), slack.shown, `Showing: ${settings.slack.sender}`, `Send ${settings.slack.sender}'s message`);
+
   document.querySelectorAll('.mode button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.mode === state.mode)));
   $('#pick').disabled = state.mode === 'live';
   $('#pick').title = state.mode === 'live' ? 'Switch to Rehearse to pick' : '';
@@ -30,6 +43,13 @@ function render(state) {
 }
 
 document.querySelectorAll('.mode button').forEach((b) => (b.onclick = () => send({ type: 'mode.set', mode: b.dataset.mode })));
+$('#camOn').onclick = () => send({ type: 'camera.toggle' });
+$('#camBlink').onclick = () => send({ type: 'camera.blink' });
+document.querySelectorAll('#camSize button').forEach((b) => (b.onclick = () => send({ type: 'camera.size', size: b.dataset.size })));
+$('#topicPrev').onclick = () => send({ type: 'topic.prev' });
+$('#topicNext').onclick = () => send({ type: 'topic.next' });
+$('#topicName').onclick = () => send({ type: 'topic.toggle' });
+$('#slack').onclick = () => send({ type: 'slack.toggle' });
 $('#reset').onclick = () => send({ type: 'reset' });
 $('#settings').onclick = () => chrome.runtime.openOptionsPage();
 $('#pick').onclick = async () => {
