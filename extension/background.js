@@ -90,6 +90,7 @@ function loadDefaults() {
     slack,
     tabs: [], // [{ label, url }] — the demo's tabs, in order
     resetTabs: true, // Reset also rebuilds the demo window's tabs
+    bridge: { enabled: true, port: 47821 }, // Stream Deck plugin on 127.0.0.1
   }));
   return defaultsPromise;
 }
@@ -339,6 +340,7 @@ async function loadState() {
     segTime: live.segTime || {},
     segCurrent: live.segCurrent || null,
     liveStart: live.liveStart || null,
+    bridge: { connected: bridgeUp },
     settings,
   };
 }
@@ -746,6 +748,92 @@ export function dispatch(action) {
   return run;
 }
 
+// ---------- Stream Deck bridge ----------
+// The Stream Deck plugin runs a WebSocket server on 127.0.0.1; we're the client.
+// Key presses arrive as actions (same as the console's); every state change goes
+// back so the keys can show it. The plugin pings every 20s, which also keeps this
+// service worker awake; an alarm reconnects if Chrome put us to sleep anyway.
+
+let bridge = null;
+let bridgeUp = false;
+let bridgePort = 0;
+let bridgeRetry = 0;
+let bridgeTimer = 0;
+
+function bridgeSlim(s) {
+  const t = s.settings.topics[s.topic.index - 1];
+  return {
+    mode: s.mode,
+    veils: s.veils.map((v) => ({ id: v.id, name: v.name, on: s.active.includes(v.id) })),
+    camera: { ...s.camera, blinkSeconds: Number(s.settings.camera.blinkSeconds) || 30 },
+    topic: { ...s.topic, count: s.settings.topics.length, title: t?.title || '', icon: t?.icon || '' },
+    topics: s.settings.topics.map((x) => ({ title: x.title, icon: x.icon })),
+    slack: { shown: s.slack.shown, sender: s.settings.slack.sender },
+    segments: configuredTabs(s.settings).map((x) => ({ id: segId(x), label: x.label || x.url, minutes: Number(x.minutes) || 0 })),
+    segTime: s.segTime,
+    segCurrent: s.segCurrent,
+    liveStart: s.liveStart,
+  };
+}
+
+function bridgeSend(msg) {
+  if (bridge?.readyState === WebSocket.OPEN) bridge.send(JSON.stringify(msg));
+}
+
+function scheduleBridge() {
+  clearTimeout(bridgeTimer);
+  const delay = Math.min(30000, 1000 * 2 ** bridgeRetry++);
+  bridgeTimer = setTimeout(bridgeConnect, delay);
+}
+
+async function bridgeConnect() {
+  const { settings } = await loadState();
+  const cfg = settings.bridge || {};
+  const port = Number(cfg.port) || 47821;
+  if (cfg.enabled === false) return bridge?.close();
+  if (bridge && bridgePort !== port) bridge.close(); // port changed in Settings
+  if (bridge && bridge.readyState <= WebSocket.OPEN) return;
+  let ws;
+  try {
+    ws = new WebSocket(`ws://127.0.0.1:${port}`);
+  } catch {
+    return scheduleBridge();
+  }
+  bridge = ws;
+  bridgePort = port;
+  ws.onopen = async () => {
+    bridgeRetry = 0;
+    bridgeUp = true;
+    bridgeSend({ type: 'hello', app: 'demo-director', version: chrome.runtime.getManifest().version });
+    broadcast(); // also sends the plugin its first state
+  };
+  ws.onmessage = async (e) => {
+    let msg;
+    try {
+      msg = JSON.parse(e.data);
+    } catch {
+      return;
+    }
+    if (msg.type === 'ping') return bridgeSend({ type: 'pong' });
+    if (msg.type === 'action' && msg.action?.type) {
+      const result = await dispatch(msg.action).catch((err) => ({ ok: false, error: String(err) }));
+      bridgeSend({ type: 'result', id: msg.id, ok: result?.ok !== false, error: result?.error || null });
+    }
+  };
+  ws.onerror = () => {}; // onclose follows; nothing listening is normal when the Deck app is closed
+  ws.onclose = () => {
+    if (bridge !== ws) return;
+    bridge = null;
+    const was = bridgeUp;
+    bridgeUp = false;
+    if (was) broadcast();
+    scheduleBridge();
+  };
+}
+
+chrome.alarms.create('dd-bridge', { periodInMinutes: 0.5 });
+chrome.alarms.onAlarm.addListener((a) => a.name === 'dd-bridge' && bridgeConnect());
+
 // ---------- outputs: broadcast + badge ----------
 
 async function broadcast() {
@@ -754,6 +842,7 @@ async function broadcast() {
   const tabs = await chrome.tabs.query({ url: await pageMatches() });
   await Promise.all(tabs.map((t) => chrome.tabs.sendMessage(t.id, msg).catch(() => {})));
   chrome.runtime.sendMessage(msg).catch(() => {}); // popup / options, if open
+  bridgeSend({ type: 'state', state: bridgeSlim(state) });
   await updateBadge(state);
 }
 
@@ -778,7 +867,10 @@ async function updateBadge(state) {
 const SESSION_KEYS = ['revealed', 'mode', 'camera', 'topic', 'slack', 'segTime', 'segCurrent', 'liveStart'];
 chrome.storage.onChanged.addListener((changes, area) => {
   const keys = Object.keys(changes);
-  if (area === 'local' && keys.includes('settings')) trackSegment(); // the tab list may have changed
+  if (area === 'local' && keys.includes('settings')) {
+    trackSegment(); // the tab list may have changed
+    bridgeConnect(); // Stream Deck port / on-off may have changed
+  }
   if ((area === 'local' && keys.some((k) => k === 'veils' || k === 'settings')) || (area === 'session' && keys.some((k) => SESSION_KEYS.includes(k)))) {
     broadcast();
   }
@@ -835,3 +927,5 @@ chrome.runtime.onInstalled.addListener(async () => {
 });
 
 chrome.runtime.onStartup.addListener(async () => updateBadge(await loadState()));
+
+bridgeConnect();

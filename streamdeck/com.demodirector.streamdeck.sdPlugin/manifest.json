@@ -1,0 +1,223 @@
+{
+  "$schema": "https://schemas.elgato.com/streamdeck/plugins/manifest.json",
+  "Name": "Demo Director",
+  "Version": "0.1.0.0",
+  "Author": "Demo Director",
+  "Description": "Drive the Demo Director Chrome extension: veils, camera bubble, topics, Slack post, tabs and slides, with live key states.",
+  "UUID": "com.demodirector.streamdeck",
+  "Icon": "imgs/plugin/icon",
+  "Category": "Demo Director",
+  "CategoryIcon": "imgs/plugin/category",
+  "CodePath": "bin/plugin.js",
+  "SDKVersion": 3,
+  "Software": {
+    "MinimumVersion": "7.1"
+  },
+  "OS": [
+    {
+      "Platform": "mac",
+      "MinimumVersion": "12"
+    },
+    {
+      "Platform": "windows",
+      "MinimumVersion": "10"
+    }
+  ],
+  "Nodejs": {
+    "Version": "24",
+    "Debug": "enabled"
+  },
+  "Actions": [
+    {
+      "Name": "Veil",
+      "UUID": "com.demodirector.streamdeck.veil",
+      "Icon": "imgs/actions/veil",
+      "Tooltip": "Hide/show one veil (pick which in the inspector)",
+      "States": [
+        {
+          "Image": "imgs/actions/veil-key",
+          "ShowTitle": false
+        }
+      ],
+      "Controllers": [
+        "Keypad"
+      ],
+      "UserTitleEnabled": false,
+      "SupportedInMultiActions": true,
+      "PropertyInspectorPath": "ui/inspector.html"
+    },
+    {
+      "Name": "Camera",
+      "UUID": "com.demodirector.streamdeck.camera",
+      "Icon": "imgs/actions/camera",
+      "Tooltip": "Camera bubble on/off",
+      "States": [
+        {
+          "Image": "imgs/actions/camera-key",
+          "ShowTitle": false
+        }
+      ],
+      "Controllers": [
+        "Keypad"
+      ],
+      "UserTitleEnabled": false,
+      "SupportedInMultiActions": true
+    },
+    {
+      "Name": "Blink",
+      "UUID": "com.demodirector.streamdeck.blink",
+      "Icon": "imgs/actions/blink",
+      "Tooltip": "Camera blink mode on/off, with countdown",
+      "States": [
+        {
+          "Image": "imgs/actions/blink-key",
+          "ShowTitle": false
+        }
+      ],
+      "Controllers": [
+        "Keypad"
+      ],
+      "UserTitleEnabled": false,
+      "SupportedInMultiActions": true
+    },
+    {
+      "Name": "Camera size",
+      "UUID": "com.demodirector.streamdeck.camsize",
+      "Icon": "imgs/actions/camsize",
+      "Tooltip": "Cycle the camera bubble S → M → L",
+      "States": [
+        {
+          "Image": "imgs/actions/camsize-key",
+          "ShowTitle": false
+        }
+      ],
+      "Controllers": [
+        "Keypad"
+      ],
+      "UserTitleEnabled": false,
+      "SupportedInMultiActions": true
+    },
+    {
+      "Name": "Topic",
+      "UUID": "com.demodirector.streamdeck.topic",
+      "Icon": "imgs/actions/topic",
+      "Tooltip": "Lower-third: next / previous / show-hide / a specific step",
+      "States": [
+        {
+          "Image": "imgs/actions/topic-key",
+          "ShowTitle": false
+        }
+      ],
+      "Controllers": [
+        "Keypad"
+      ],
+      "UserTitleEnabled": false,
+      "SupportedInMultiActions": true,
+      "PropertyInspectorPath": "ui/inspector.html"
+    },
+    {
+      "Name": "Slack post",
+      "UUID": "com.demodirector.streamdeck.slack",
+      "Icon": "imgs/actions/slack",
+      "Tooltip": "Show or dismiss the Slack notification",
+      "States": [
+        {
+          "Image": "imgs/actions/slack-key",
+          "ShowTitle": false
+        }
+      ],
+      "Controllers": [
+        "Keypad"
+      ],
+      "UserTitleEnabled": false,
+      "SupportedInMultiActions": true
+    },
+    {
+      "Name": "Live / Rehearse",
+      "UUID": "com.demodirector.streamdeck.mode",
+      "Icon": "imgs/actions/mode",
+      "Tooltip": "Switch between Rehearse and Live",
+      "States": [
+        {
+          "Image": "imgs/actions/mode-key",
+          "ShowTitle": false
+        }
+      ],
+      "Controllers": [
+        "Keypad"
+      ],
+      "UserTitleEnabled": false,
+      "SupportedInMultiActions": true
+    },
+    {
+      "Name": "Reset demo",
+      "UUID": "com.demodirector.streamdeck.reset",
+      "Icon": "imgs/actions/reset",
+      "Tooltip": "Hold 1s: veils on, Slack + topic hidden, demo tabs restored, timers zeroed",
+      "States": [
+        {
+          "Image": "imgs/actions/reset-key",
+          "ShowTitle": false
+        }
+      ],
+      "Controllers": [
+        "Keypad"
+      ],
+      "UserTitleEnabled": false,
+      "SupportedInMultiActions": true
+    },
+    {
+      "Name": "Tab",
+      "UUID": "com.demodirector.streamdeck.tab",
+      "Icon": "imgs/actions/tab",
+      "Tooltip": "Next / previous demo tab; shows the current segment's timer",
+      "States": [
+        {
+          "Image": "imgs/actions/tab-key",
+          "ShowTitle": false
+        }
+      ],
+      "Controllers": [
+        "Keypad"
+      ],
+      "UserTitleEnabled": false,
+      "SupportedInMultiActions": true,
+      "PropertyInspectorPath": "ui/inspector.html"
+    },
+    {
+      "Name": "Slide",
+      "UUID": "com.demodirector.streamdeck.slide",
+      "Icon": "imgs/actions/slide",
+      "Tooltip": "Next / previous Google Slides slide",
+      "States": [
+        {
+          "Image": "imgs/actions/slide-key",
+          "ShowTitle": false
+        }
+      ],
+      "Controllers": [
+        "Keypad"
+      ],
+      "UserTitleEnabled": false,
+      "SupportedInMultiActions": true,
+      "PropertyInspectorPath": "ui/inspector.html"
+    },
+    {
+      "Name": "Console",
+      "UUID": "com.demodirector.streamdeck.console",
+      "Icon": "imgs/actions/console",
+      "Tooltip": "Open the Director console",
+      "States": [
+        {
+          "Image": "imgs/actions/console-key",
+          "ShowTitle": false
+        }
+      ],
+      "Controllers": [
+        "Keypad"
+      ],
+      "UserTitleEnabled": false,
+      "SupportedInMultiActions": true
+    }
+  ]
+}

@@ -9,7 +9,7 @@ Stage-manage live product demos from a Stream Deck: hide parts of the page and r
 | 1 | Extension core: veils, element picker, Rehearse/Live, badge, hotkeys, export/import | ✅ done |
 | 2 | Camera bubble (device picker, on/off, blink, S/M/L), 10 topic lower-thirds, Slack notification | ✅ done |
 | 3 | Director console (second-screen window) | ✅ done |
-| 4 | Stream Deck plugin (native, WebSocket bridge, live key states) | next |
+| 4 | Stream Deck plugin (native, WebSocket bridge, live key states): see [streamdeck/README.md](streamdeck/README.md) | ✅ done |
 | later | Fill drop (Sanity patch) | |
 
 ## Install (unpacked)

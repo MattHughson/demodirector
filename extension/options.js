@@ -174,6 +174,8 @@ function renderSettings(state) {
   pv.style.setProperty('--ring-w', `${Number(s.camera.ringWidth ?? 3)}px`);
   renderTopics(state);
   renderTabs(state);
+  $('#bridgeStatus').textContent = state.bridge?.connected ? '● Connected to the Stream Deck plugin' : '○ Not connected. Is the Stream Deck app running with the Demo Director plugin installed?';
+  $('#bridgeStatus').style.color = state.bridge?.connected ? 'var(--on)' : '';
   renderAvatar();
 }
 

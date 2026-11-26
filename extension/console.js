@@ -150,6 +150,10 @@ function render(s) {
   $('#mode').classList.toggle('live', live);
   $('#modeText').textContent = live ? 'LIVE' : 'REHEARSE';
   document.title = `${live ? '● LIVE' : 'Rehearse'} — Demo Director`;
+  const conn = $('#conn');
+  conn.classList.toggle('ok', !!s.bridge?.connected);
+  conn.querySelector('span').textContent = s.bridge?.connected ? 'Stream Deck: connected' : 'Stream Deck: not connected';
+  conn.title = s.bridge?.connected ? 'The Stream Deck plugin is driving this console' : 'Start the Stream Deck app (with the Demo Director plugin) to connect';
   renderCamera(s);
   renderTopics(s);
   renderVeils(s);

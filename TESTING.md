@@ -137,6 +137,20 @@ Before this section, open Settings and the console as **their own windows**, not
 | 9.9 | In Slides mode: **Camera**, **Blink**, **S/M/L** buttons. | The camera bubble responds on the deck tab (published or editor view). The Blink button shows "Hides in Ns" / "Back in Ns". |
 | 9.6 | Open any Google **Doc** (not Slides). | No `REHEARSE` chip appears there. Demo Director only runs on Slides pages. |
 
+## 10. Stream Deck
+
+| ID | Steps | Expected |
+|---|---|---|
+| 10.1 | **[MATT]** Stream Deck app ≥ 7.1. `git pull`, then `sh streamdeck/install-mac.sh`. | The Stream Deck app restarts, and a **Demo Director** category appears in its action list. |
+| 10.2 | **[MATT]** Drag **Camera** onto a key while Chrome is closed. | The key shows OFFLINE · Chrome? (grey). |
+| 10.3 | Open Chrome with the extension. | Within a few seconds the key becomes OFF Camera. Settings → Stream Deck shows "● Connected", and the console header shows "Stream Deck: connected". |
+| 10.4 | **[MATT]** Press Camera, Blink, Camera size and Live/Rehearse. | The page, console and key faces all follow: green ON, orange countdown, size letter, red LIVE. |
+| 10.5 | **[MATT]** Add **Veil**, choose slot 1 in the inspector, and press it. | The inspector lists your veils by name. The key flips HIDDEN ↔ SHOWN and the page follows. |
+| 10.6 | **[MATT]** Add **Topic** set to "Show a specific step" → 4, and press it. | Step 4 appears on the page, and the key turns orange with ON AIR. |
+| 10.7 | **[MATT]** Add **Reset demo**. Tap it, then hold it for 1s. | Tap: nothing happens. Hold: HOLD…, then a ✓, and the demo resets. |
+| 10.8 | **[MATT]** Add **Tab: Next** and stay on a segment past 80% of its budget. | The key shows the next tab's name and turns amber, then red, with the time. |
+| 10.9 | **[MATT]** Quit Chrome. | The keys go OFFLINE. Reopen Chrome and they come back on their own. |
+
 ## Report format
 
 Paste this back to Claude Code:

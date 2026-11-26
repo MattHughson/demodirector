@@ -191,6 +191,18 @@
   </section>
 
   <section>
+    <h2>Stream Deck</h2>
+    <p class="muted">The Demo Director Stream Deck plugin listens on your Mac at <code>127.0.0.1</code>. The extension connects to it automatically and reconnects if either one restarts. Only change the port if something else on your Mac already uses it, and set the same port in the plugin.</p>
+    <div class="card">
+      <div class="grid">
+        <label class="check"><input type="checkbox" data-path="bridge.enabled"> Connect to the Stream Deck plugin</label>
+        <label>Port <input type="number" min="1024" max="65535" data-path="bridge.port"></label>
+      </div>
+      <div id="bridgeStatus" class="muted" style="font-size:12px"></div>
+    </div>
+  </section>
+
+  <section>
     <h2>Back up and share</h2>
     <p class="muted">Export your veils and settings (topics, Slack post, camera sizes) as one JSON file to commit to the repo or hand to a colleague. Importing replaces them.</p>
     <div class="bar">

@@ -1,0 +1,4 @@
+node_modules/
+streamdeck/dist/
+streamdeck/com.demodirector.streamdeck.sdPlugin/logs/
+.DS_Store
