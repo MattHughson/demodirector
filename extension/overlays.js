@@ -6,10 +6,24 @@
   const CSS = `
     /* ---------- camera bubble ---------- */
     .cam { position: fixed; border-radius: 50%; overflow: hidden; background: #101828;
-      box-shadow: 0 10px 30px rgba(16,24,40,.35), 0 0 0 3px rgba(255,255,255,.9);
+      box-shadow: 0 10px 30px rgba(16,24,40,.35), 0 0 0 var(--ring-w, 3px) var(--ring, #fff);
       transition: opacity .45s ease, transform .45s ease, width .3s ease, height .3s ease; }
     .cam iframe { width: 100%; height: 100%; border: 0; display: block; }
     .cam.off { opacity: 0; transform: scale(.85); }
+    /* Rehearse: drag to move, handle to resize. Live: untouchable. */
+    .cam .grab { position: absolute; inset: 0; border-radius: 50%; cursor: grab; display: none; }
+    .cam .size { position: absolute; right: 6%; bottom: 6%; width: 22px; height: 22px; border-radius: 50%;
+      background: #f79009; border: 3px solid #fff; cursor: nwse-resize; display: none; box-shadow: 0 2px 6px rgba(0,0,0,.3); }
+    .cam.editable { pointer-events: auto; }
+    .cam.editable .grab, .cam.editable .size { display: block; }
+    .cam.editable:hover { box-shadow: 0 10px 30px rgba(16,24,40,.35), 0 0 0 3px #f79009; }
+    .cam.dragging { transition: none; }
+    .cam.dragging .grab { cursor: grabbing; }
+    .cam .tag { position: absolute; left: 50%; bottom: -30px; translate: -50% 0; white-space: nowrap; padding: 3px 8px; border-radius: 6px;
+      background: #101828; color: #fff; font: 600 11px -apple-system, BlinkMacSystemFont, system-ui, sans-serif; display: none; }
+    .cam.editable:hover .tag, .cam.dragging .tag { display: block; }
+    .cam { overflow: visible; }
+    .cam .clip { position: absolute; inset: 0; border-radius: 50%; overflow: hidden; }
     .cam[hidden] { display: none; }
 
     /* ---------- lower-third ---------- */
@@ -64,24 +78,37 @@
 
     const cam = div('cam');
     cam.hidden = true;
+    cam.innerHTML = '<div class="clip"></div><div class="grab" title="Drag to place the camera for this tab"></div><div class="size" title="Drag to resize"></div><div class="tag">Drag to place · saved for this tab</div>';
+    const clip = cam.querySelector('.clip');
     ui.appendChild(cam);
     let frame = null;
     let blinkTimer = 0;
 
     function cameraSize(s) {
+      if (typeof s.camera.size === 'number') return s.camera.size;
       const sizes = s.settings.camera.sizes;
       return Number(sizes[s.camera.size] || sizes.m) || 240;
     }
 
+    // Where the bubble sits: a corner plus offsets from its two edges.
+    function cameraPos(s) {
+      return s.camera.pos || { corner: 'tr', x: s.settings.camera.offsetRight, y: s.settings.camera.offsetTop };
+    }
+
+    function placeCam(pos, size) {
+      const v = pos.corner[0] === 't' ? 'top' : 'bottom';
+      const h = pos.corner[1] === 'l' ? 'left' : 'right';
+      Object.assign(cam.style, { top: '', bottom: '', left: '', right: '', width: `${size}px`, height: `${size}px` });
+      cam.style[v] = `${pos.y}px`;
+      cam.style[h] = `${pos.x}px`;
+    }
+
     function renderCamera(s) {
-      const cfg = s.settings.camera;
-      const size = cameraSize(s);
-      Object.assign(cam.style, {
-        width: `${size}px`,
-        height: `${size}px`,
-        top: `${cfg.offsetTop}px`,
-        right: `${cfg.offsetRight}px`,
-      });
+      if (!drag) placeCam(cameraPos(s), cameraSize(s));
+      const cc = s.settings.camera;
+      cam.style.setProperty('--ring', /^#[0-9a-f]{3,8}$/i.test(cc.ringColor || '') ? cc.ringColor : '#ffffff');
+      cam.style.setProperty('--ring-w', `${Math.max(0, Math.min(20, Number(cc.ringWidth ?? 3)))}px`);
+      cam.classList.toggle('editable', s.mode !== 'live');
       cam.hidden = !s.camera.on;
       // Only stream in the tab you're actually showing; removing the frame frees the camera.
       const wantStream = s.camera.on && document.visibilityState === 'visible';
@@ -89,7 +116,7 @@
         frame = document.createElement('iframe');
         frame.allow = 'camera';
         frame.src = chrome.runtime.getURL('camera.html');
-        cam.appendChild(frame);
+        clip.appendChild(frame);
       } else if (!wantStream && frame) {
         frame.remove();
         frame = null;
@@ -107,6 +134,56 @@
     }
 
     document.addEventListener('visibilitychange', () => state && renderCamera(state));
+
+    // ---- drag / resize (Rehearse only) ----
+    let drag = null;
+    function startDrag(e, kind) {
+      if (state?.mode === 'live') return;
+      e.preventDefault();
+      e.stopPropagation();
+      const r = cam.getBoundingClientRect();
+      drag = { kind, x0: e.clientX, y0: e.clientY, left: r.left, top: r.top, size: r.width };
+      cam.classList.add('dragging');
+      e.target.setPointerCapture(e.pointerId);
+    }
+    function moveDrag(e) {
+      if (!drag) return;
+      const dx = e.clientX - drag.x0;
+      const dy = e.clientY - drag.y0;
+      let { left, top, size } = drag;
+      if (drag.kind === 'move') {
+        left = Math.min(Math.max(0, left + dx), innerWidth - size);
+        top = Math.min(Math.max(0, top + dy), innerHeight - size);
+      } else {
+        size = Math.max(80, Math.min(900, size + Math.max(dx, dy)));
+      }
+      Object.assign(cam.style, { right: '', bottom: '', left: `${left}px`, top: `${top}px`, width: `${size}px`, height: `${size}px` });
+      drag.cur = { left, top, size };
+    }
+    function endDrag() {
+      if (!drag) return;
+      const { left, top, size } = drag.cur || drag;
+      drag = null;
+      cam.classList.remove('dragging');
+      // Snap to the nearest corner so the spot holds at any window size.
+      const cx = left + size / 2;
+      const cy = top + size / 2;
+      const corner = (cy < innerHeight / 2 ? 't' : 'b') + (cx < innerWidth / 2 ? 'l' : 'r');
+      const pos = {
+        corner,
+        x: corner[1] === 'l' ? left : innerWidth - left - size,
+        y: corner[0] === 't' ? top : innerHeight - top - size,
+      };
+      placeCam(pos, size);
+      send({ type: 'camera.place', pos, size });
+    }
+    cam.querySelector('.grab').addEventListener('pointerdown', (e) => startDrag(e, 'move'));
+    cam.querySelector('.size').addEventListener('pointerdown', (e) => startDrag(e, 'size'));
+    for (const n of [cam.querySelector('.grab'), cam.querySelector('.size')]) {
+      n.addEventListener('pointermove', moveDrag);
+      n.addEventListener('pointerup', endDrag);
+      n.addEventListener('pointercancel', endDrag);
+    }
 
     // ======================= lower-third =======================
 
@@ -185,7 +262,8 @@
 
       // Keep clear of the camera bubble: sit below it when it's on.
       let top = Number(cfg.offsetTop) || 0;
-      if (s.camera.on) top = Math.max(top, s.settings.camera.offsetTop + cameraSize(s) + 16);
+      const cp = cameraPos(s);
+      if (s.camera.on && cp.corner === 'tr') top = Math.max(top, cp.y + cameraSize(s) + 16);
       Object.assign(slack.style, { top: `${top}px`, right: `${cfg.offsetRight}px`, scale: String(cfg.scale || 1) });
       withAnimation(slack, animate, () => slack.classList.toggle('in', s.slack.shown));
       slack.style.pointerEvents = s.slack.shown ? 'auto' : 'none';

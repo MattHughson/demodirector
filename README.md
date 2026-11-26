@@ -35,6 +35,18 @@ Click **Pick element** in the toolbar popup, or click the `REHEARSE` chip at the
 
 Selectors prefer `data-testid` / `data-ui` / stable ids over generated class names. Per-row ids such as `pane-item-42` become prefix matches. **+ Add another** adds more elements to the same veil (e.g. Live + Upcoming + Past). The matches are outlined live, and you can edit the selector text before saving.
 
+### Hiding only some text
+
+When the title and the secondary text share the same markup, a selector alone can hide too much. In the New veil panel, **Only hide if the text…** narrows it down:
+
+- **looks like a date**: `Dec 11`, `11 Dec`, `12/11`, `2026-12-11`, `today`, `3 days ago`
+- **starts with** / **contains**: e.g. `Dec`. It's pre-filled with the first word of what you clicked and isn't case-sensitive.
+- **matches pattern**: a regular expression for anything else.
+
+The live count and outlines update as you type. Matching elements get a `data-dd-veil` marker attribute, which the veil's CSS hides. The markers are re-applied when the app re-renders, and nothing is removed. You can change the filter later in Settings → Veils.
+
+If you want the whole second line of every row gone (dates **and** status-only text), plain **Same spot in each** now pins the position at the right level, so no text filter is needed.
+
 ## Camera bubble
 
 1. Open **Settings → Camera bubble → Grant camera access** once. The permission belongs to the extension, so it works on any codespace URL. Then pick your camera.
@@ -50,6 +62,19 @@ The 10 script steps come from `topics.json` and can be edited in Settings (title
 The defaults are in `slack-toast.json` and can be edited in Settings, where you can also upload the avatar. The post slides in from the top-right and sits below the camera bubble when it's on. Clicking it dismisses it. It stays until dismissed, unless `autoHideSeconds` is set. The optional chime is synthesised in the page, so tab-audio sharing picks it up.
 
 **Reset** turns every veil on and hides the Slack post and the topic. The camera is left as it is.
+
+## Segments (run-of-show)
+
+Each demo tab is a **segment**. In **Settings → Segments**, each one has:
+
+- **Tab:** a label and URL, in order. Reset demo rebuilds exactly these tabs (see below).
+- **Camera on arrival:** Keep / On / On + blink / Off. This is applied whenever that tab comes on screen, and the camera buttons still override it until the next segment.
+- **Ring colour / width** (Settings → Camera bubble) set the frame around the bubble; width 0 removes it.
+- **Camera spot:** open the tab in **Rehearse** mode and drag the bubble where you want it. Resize it from its orange handle. It snaps to the nearest corner and saves to that segment. **Reset spot** in Settings returns it to the default. Dragging is locked in Live.
+- **Time budget:** `m:ss` or minutes.
+- **Talking points:** what to say and do on this screen.
+
+In the console, the **Now** card shows the current segment's talking points and its timer against the budget. The timer turns amber at 80% and red when over. **Run of show** lists each segment's time, and the header shows a total clock from when you went Live. Time counts only while a segment's tab is on screen and adds up across visits. **Reset demo** zeroes it. On the Google Slides segment, the console shows the deck's speaker notes instead of talking points, with the segment timer beside the slide number.
 
 ## Demo tabs and Reset demo
 
@@ -79,7 +104,12 @@ It shows everything live: Rehearse/Live, camera state (with a countdown to the n
 2. In **Settings → Slides & speaker notes**, paste the deck's editor link and click **Load notes from Google**. Chrome asks once for Google access. The deck is downloaded as .pptx with your own Google login and read locally. If that fails, use **Upload .pptx instead** (in Slides: File → Download → Microsoft PowerPoint).
 3. When the deck's tab is on screen, the console switches to **Slides mode**: big notes for the current slide, the slide number and title, and previews of the current and next slide. **A− / A+** resize the notes, and **Demo controls** lets you peek at the demo controls. Switch to any other tab and it's back to **Demo mode**.
 
-You advance the deck yourself (clicker, arrow keys or a Stream Deck hotkey). The notes follow the slide named in the tab's URL (`slide=id.<pageId>`). Edited the deck? Click **Load notes** again. Google access only adds Demo Director to Slides pages, never the rest of Docs or Drive.
+Slides mode also has its own controls: **◀ Prev slide / Next slide ▶** and **Camera on/off, Blink (with countdown), S/M/L**, so you don't have to leave the notes. Shortcuts: `slide-next` / `slide-prev`.
+
+- **Editor or published view:** the buttons jump the deck by changing only the `#slide=` part of the URL. No reload, clamped at the first and last slide. This needs the notes loaded.
+- **Present mode:** the buttons press ←/→ inside the deck. This is best-effort, so if Present mode ignores it, use the published view.
+
+You can still advance the deck yourself (clicker, arrow keys or a Stream Deck hotkey). The notes follow the slide named in the tab's URL (`slide=id.<pageId>`). Edited the deck? Click **Load notes** again. Google access only adds Demo Director to Slides pages, never the rest of Docs or Drive.
 
 ## Modes
 

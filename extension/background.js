@@ -48,13 +48,20 @@ chrome.permissions.onAdded.addListener(syncDynamicSites);
 chrome.permissions.onRemoved.addListener(syncDynamicSites);
 const EXPORT_VERSION = 2;
 const SIZES = ['s', 'm', 'l'];
+// 's'|'m'|'l' → 'M'; a dragged px size → '300px'
+const sizeLabel = (size) => (typeof size === 'number' ? `${size}px` : String(size || 'm').toUpperCase());
 
 const LIVE_DEFAULTS = {
   revealed: [],
   mode: 'rehearse',
-  camera: { on: false, blink: false, blinkStart: 0, size: 'm' },
+  // size: 's' | 'm' | 'l' | <px>; pos: null (default top-right) or { corner: 'tl'|'tr'|'bl'|'br', x, y }
+  camera: { on: false, blink: false, blinkStart: 0, size: 'm', pos: null },
   topic: { index: 0, shown: false },
   slack: { shown: false, at: 0 },
+  // Segments (demo tabs) timing: ms spent per segment id, the one on screen now, and the Live clock.
+  segTime: {},
+  segCurrent: null, // { id, since }
+  liveStart: null,
 };
 
 const CAMERA_DEFAULTS = {
@@ -64,6 +71,8 @@ const CAMERA_DEFAULTS = {
   sizes: { s: 160, m: 240, l: 360 },
   offsetTop: 24,
   offsetRight: 24,
+  ringColor: '#ffffff', // the frame around the bubble
+  ringWidth: 3, // px; 0 = no ring
 };
 
 const LOWER_THIRD_DEFAULTS = { offsetLeft: 32, offsetBottom: 48, scale: 1, accent: '#f79009' };
@@ -127,6 +136,11 @@ function pairTabs(cfg, tabs) {
   });
 }
 
+const newSegId = () => `seg-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+// Older lists have no ids: fall back to the URL so timing still has a key.
+const segId = (t) => t.id || `u:${t.url}`;
+const withIds = (list) => (list || []).map((t) => ({ ...t, id: t.id || newSegId() }));
+
 const configuredTabs = (settings) => settings.tabs.filter((t) => /^https?:\/\/\S+$/.test(t.url || ''));
 
 async function tabsStatus() {
@@ -136,7 +150,7 @@ async function tabsStatus() {
   const pairs = pairTabs(configuredTabs(settings), tabs);
   return {
     windowId: win?.id,
-    tabs: pairs.map((p) => ({ label: p.label, url: p.url, open: !!p.tab, active: !!p.tab?.active, tabId: p.tab?.id })),
+    tabs: pairs.map((p) => ({ id: segId(p), label: p.label, url: p.url, open: !!p.tab, active: !!p.tab?.active, tabId: p.tab?.id })),
     extra: tabs.filter((t) => !pairs.some((p) => p.tab?.id === t.id)).length,
   };
 }
@@ -183,6 +197,123 @@ async function stepTab(delta) {
   return { ok: true };
 }
 
+// ---------- segments: which demo tab is on screen ----------
+
+// The segment (configured demo tab) a browser tab belongs to, if any.
+async function segmentForTab(tabId) {
+  const { settings } = await loadState();
+  const tab = await chrome.tabs.get(tabId).catch(() => null);
+  if (!tab) return null;
+  const tabs = await chrome.tabs.query({ windowId: tab.windowId });
+  const pair = pairTabs(configuredTabs(settings), tabs).find((p) => p.tab?.id === tabId);
+  return pair ? { ...pair, id: segId(pair) } : null;
+}
+
+// Camera preset → live camera. mode: keep | off | on | blink; pos/size optional.
+function cameraForSegment(camera, preset) {
+  const next = { ...camera };
+  const mode = preset?.mode || 'keep';
+  if (mode === 'off') Object.assign(next, { on: false, blink: false });
+  if (mode === 'on') Object.assign(next, { on: true, blink: false });
+  if (mode === 'blink') Object.assign(next, { on: true, blink: true, blinkStart: camera.blink ? camera.blinkStart : Date.now() });
+  if (preset?.pos) Object.assign(next, { pos: preset.pos, size: preset.size || camera.size });
+  else next.pos = null; // back to the default spot
+  return next;
+}
+
+// Called whenever the demo window's active tab may have changed: bank the time
+// spent on the previous segment and apply the new segment's camera preset.
+let trackQueued = null;
+function trackSegment() {
+  clearTimeout(trackQueued);
+  trackQueued = setTimeout(() => dispatch({ type: 'segment.track' }), 80);
+}
+
+async function trackSegmentNow() {
+  const s = await loadState();
+  const win = await demoWindow();
+  const [active] = win ? await chrome.tabs.query({ windowId: win.id, active: true }) : [];
+  const seg = active ? await segmentForTab(active.id) : null;
+  const curId = s.segCurrent?.id || null;
+  if ((seg?.id || null) === curId) return { ok: true, unchanged: true };
+  const now = Date.now();
+  const segTime = { ...s.segTime };
+  if (curId) segTime[curId] = (segTime[curId] || 0) + Math.max(0, now - s.segCurrent.since);
+  const patch = { segTime, segCurrent: seg ? { id: seg.id, since: now } : null };
+  if (seg) patch.camera = cameraForSegment(s.camera, seg.camera);
+  await saveLive(patch);
+  return { ok: true, segment: seg?.id || null };
+}
+
+chrome.tabs.onActivated.addListener(trackSegment);
+chrome.tabs.onUpdated.addListener((id, info) => info.url && trackSegment());
+chrome.tabs.onRemoved.addListener(trackSegment);
+chrome.windows.onFocusChanged.addListener(trackSegment);
+
+// ---------- Google Slides control ----------
+
+const SLIDES_URL = /^https:\/\/docs\.google\.com\/presentation\//;
+
+// The deck tab in the demo window: the active tab if it's a deck, else the first deck tab.
+async function deckTab() {
+  const win = await demoWindow();
+  if (!win) return null;
+  const tabs = (await chrome.tabs.query({ windowId: win.id })).filter((t) => SLIDES_URL.test(t.url || ''));
+  return tabs.find((t) => t.active) || tabs[0] || null;
+}
+
+// Same rule as deck.js: the hash wins over the query string.
+function slideInUrl(url) {
+  const hashAt = url.indexOf('#');
+  const parts = hashAt >= 0 ? [url.slice(hashAt), url.slice(0, hashAt)] : [url];
+  for (const part of parts) {
+    const id = /[#?&]slide=id\.([^&#]+)/.exec(part);
+    if (id) return { pageId: decodeURIComponent(id[1]) };
+    const n = /[#?&]slide=(\d+)\b/.exec(part);
+    if (n) return { index: Number(n[1]) - 1 };
+  }
+  return null;
+}
+
+// Present mode ignores URL changes, so press the arrow key inside the deck instead.
+function pressKey(key) {
+  const keyCode = key === 'ArrowRight' ? 39 : 37;
+  const target = document.activeElement && document.activeElement !== document.body ? document.activeElement : document.body;
+  for (const type of ['keydown', 'keyup']) {
+    const e = new KeyboardEvent(type, { key, code: key, bubbles: true, cancelable: true, composed: true });
+    Object.defineProperty(e, 'keyCode', { get: () => keyCode });
+    Object.defineProperty(e, 'which', { get: () => keyCode });
+    target.dispatchEvent(e);
+  }
+  return true;
+}
+
+async function stepSlide(delta) {
+  const tab = await deckTab();
+  if (!tab) return { ok: false, error: 'No Google Slides tab in the demo window' };
+  const url = new URL(tab.url);
+  const { deck } = await chrome.storage.local.get('deck');
+  const mapped = deck?.slides?.length && deck.slides.every((s) => s.pageId);
+  const presenting = /\/present\b/.test(url.pathname);
+
+  if (!presenting && mapped) {
+    const where = slideInUrl(tab.url);
+    let i = where?.pageId ? deck.slides.findIndex((s) => s.pageId === where.pageId) : where?.index ?? 0;
+    if (i < 0) i = 0;
+    const j = Math.max(0, Math.min(deck.slides.length - 1, i + delta));
+    url.hash = `slide=id.${deck.slides[j].pageId}`;
+    await chrome.tabs.update(tab.id, { url: url.toString() }); // hash-only: no reload
+    return { ok: true, via: 'url', index: j };
+  }
+  try {
+    // MAIN world: the page's own handlers must see keyCode/which, which isolated-world props hide.
+    await chrome.scripting.executeScript({ target: { tabId: tab.id }, world: 'MAIN', func: pressKey, args: [delta > 0 ? 'ArrowRight' : 'ArrowLeft'] });
+    return { ok: true, via: 'keys' };
+  } catch {
+    return { ok: false, error: 'Allow Google access (Settings → Slides) so Demo Director can move the deck' };
+  }
+}
+
 // ---------- state ----------
 
 async function loadState() {
@@ -205,6 +336,9 @@ async function loadState() {
     camera: { ...LIVE_DEFAULTS.camera, ...live.camera },
     topic: { ...LIVE_DEFAULTS.topic, ...live.topic },
     slack: { ...LIVE_DEFAULTS.slack, ...live.slack },
+    segTime: live.segTime || {},
+    segCurrent: live.segCurrent || null,
+    liveStart: live.liveStart || null,
     settings,
   };
 }
@@ -234,12 +368,23 @@ function cleanSelectors(list) {
   return [...new Set((list || []).map((s) => String(s).trim()).filter(Boolean))];
 }
 
+// Optional text filter: hide only matches whose text starts with / contains / matches.
+function cleanText(t) {
+  if (!t || typeof t !== 'object') return undefined;
+  const mode = ['date', 'starts', 'contains', 'regex'].includes(t.mode) ? t.mode : null;
+  const value = String(t.value || '').trim();
+  if (mode === 'date') return { mode };
+  return mode && value ? { mode, value } : undefined;
+}
+
 function normaliseVeil(v, veils) {
   const name = String(v.name || v.id || 'Veil').trim();
+  const text = cleanText(v.text);
   return {
     id: uniqueId(slugify(v.id || name), veils),
     name,
     selectors: cleanSelectors(v.selectors),
+    ...(text && { text }),
   };
 }
 
@@ -272,25 +417,31 @@ const handlers = {
     return { ok: true };
   },
 
-  async 'veil.create'({ name, selectors }) {
+  async 'veil.create'({ name, selectors, text }) {
     const { veils } = await loadState();
-    const veil = normaliseVeil({ name, selectors }, veils);
+    const veil = normaliseVeil({ name, selectors, text }, veils);
     if (!veil.selectors.length) return { ok: false, error: 'A veil needs at least one selector' };
     await saveVeils([...veils, veil]);
     return { ok: true, veil };
   },
 
-  async 'veil.update'({ id, name, selectors }) {
+  // text: pass null to remove the filter, an object to set it, or omit to keep it.
+  async 'veil.update'({ id, name, selectors, text }) {
     const { veils } = await loadState();
-    const next = veils.map((v) =>
-      v.id !== id
-        ? v
-        : {
-            ...v,
-            ...(name !== undefined && { name: String(name).trim() || v.name }),
-            ...(selectors !== undefined && { selectors: cleanSelectors(selectors) }),
-          }
-    );
+    const next = veils.map((v) => {
+      if (v.id !== id) return v;
+      const out = {
+        ...v,
+        ...(name !== undefined && { name: String(name).trim() || v.name }),
+        ...(selectors !== undefined && { selectors: cleanSelectors(selectors) }),
+      };
+      if (text !== undefined) {
+        const t = cleanText(text);
+        if (t) out.text = t;
+        else delete out.text;
+      }
+      return out;
+    });
     await saveVeils(next);
     return { ok: true };
   },
@@ -318,9 +469,28 @@ const handlers = {
   // configured) the demo window rebuilt to exactly the demo tabs. Camera untouched.
   async reset() {
     const { topic, settings } = await loadState();
-    await saveLive({ revealed: [], slack: { shown: false, at: 0 }, topic: { ...topic, shown: false } });
+    const { mode } = await loadState();
+    await saveLive({
+      revealed: [],
+      slack: { shown: false, at: 0 },
+      topic: { ...topic, shown: false },
+      segTime: {},
+      segCurrent: null,
+      liveStart: mode === 'live' ? Date.now() : null,
+    });
     const tabs = settings.resetTabs && configuredTabs(settings).length ? await rebuildTabs() : null;
+    trackSegment(); // start timing whichever segment is on screen now
     return { ok: true, tabs };
+  },
+
+  // ----- slides -----
+
+  async 'slide.next'() {
+    return stepSlide(1);
+  },
+
+  async 'slide.prev'() {
+    return stepSlide(-1);
   },
 
   // ----- demo tabs -----
@@ -355,14 +525,15 @@ const handlers = {
     const win = await demoWindow();
     if (!win) return { ok: false, error: 'No browser window' };
     const tabs = (await chrome.tabs.query({ windowId: win.id })).filter((t) => /^https?:/.test(t.url || ''));
-    const list = tabs.map((t) => ({ label: (t.title || new URL(t.url).host).slice(0, 40), url: t.url }));
+    const list = tabs.map((t) => ({ id: newSegId(), label: (t.title || new URL(t.url).host).slice(0, 40), url: t.url }));
     await handlers['settings.update']({ patch: { tabs: list } });
     return { ok: true, count: list.length };
   },
 
   async 'mode.set'({ mode }) {
     if (mode !== 'live' && mode !== 'rehearse') return { ok: false, error: 'Bad mode' };
-    await saveLive({ mode });
+    const { liveStart } = await loadState();
+    await saveLive({ mode, ...(mode === 'live' && !liveStart && { liveStart: Date.now() }) });
     return { ok: true, mode };
   },
 
@@ -411,9 +582,35 @@ const handlers = {
 
   async 'camera.size'({ size } = {}) {
     const { camera } = await loadState();
+    // A custom (dragged) px size cycles back to S.
     const next = SIZES.includes(size) ? size : SIZES[(SIZES.indexOf(camera.size) + 1) % SIZES.length];
     await saveLive({ camera: { ...camera, size: next } });
     return { ok: true, size: next };
+  },
+
+  // Dragged/resized in Rehearse mode: move the live bubble, and if the tab is a
+  // segment, save it as that segment's camera spot.
+  async 'camera.place'({ pos, size, tabId }) {
+    const corner = ['tl', 'tr', 'bl', 'br'].includes(pos?.corner) ? pos.corner : 'tr';
+    const clean = { corner, x: Math.max(0, Math.round(pos?.x || 0)), y: Math.max(0, Math.round(pos?.y || 0)) };
+    const px = Math.max(80, Math.min(900, Math.round(Number(size) || 240)));
+    const { camera, settings } = await loadState();
+    await saveLive({ camera: { ...camera, pos: clean, size: px } });
+    const seg = tabId ? await segmentForTab(tabId) : null;
+    if (seg) {
+      const tabs = settings.tabs.map((t) => (segId(t) === seg.id ? { ...t, camera: { ...(t.camera || {}), pos: clean, size: px } } : t));
+      await handlers['settings.update']({ patch: { tabs } });
+    }
+    return { ok: true, segment: seg?.label || null };
+  },
+
+  'segment.track': trackSegmentNow,
+
+  async 'segment.update'({ id, patch }) {
+    const { settings } = await loadState();
+    const tabs = settings.tabs.map((t) => (segId(t) === id ? { ...t, ...patch } : t));
+    await handlers['settings.update']({ patch: { tabs } });
+    return { ok: true };
   },
 
   // ----- topics (lower-thirds) -----
@@ -494,6 +691,7 @@ const handlers = {
     const { settings: stored = {} } = await chrome.storage.local.get('settings');
     const next = merge(stored, patch);
     if (patch?.topics) next.topics = patch.topics;
+    if (patch?.tabs) next.tabs = withIds(patch.tabs);
     await chrome.storage.local.set({ settings: next });
     return { ok: true };
   },
@@ -571,15 +769,16 @@ async function updateBadge(state) {
     title: [
       `Demo Director — ${live ? 'LIVE' : 'Rehearse'}`,
       names.length ? `Veiled: ${names.join(', ')}` : 'No veils on',
-      `Camera: ${cam} (${state.camera.size.toUpperCase()})`,
+      `Camera: ${cam} (${sizeLabel(state.camera.size)})`,
       state.topic.shown ? `Topic ${state.topic.index}: ${state.settings.topics[state.topic.index - 1]?.title}` : 'Topic: hidden',
     ].join('\n'),
   });
 }
 
-const SESSION_KEYS = ['revealed', 'mode', 'camera', 'topic', 'slack'];
+const SESSION_KEYS = ['revealed', 'mode', 'camera', 'topic', 'slack', 'segTime', 'segCurrent', 'liveStart'];
 chrome.storage.onChanged.addListener((changes, area) => {
   const keys = Object.keys(changes);
+  if (area === 'local' && keys.includes('settings')) trackSegment(); // the tab list may have changed
   if ((area === 'local' && keys.some((k) => k === 'veils' || k === 'settings')) || (area === 'session' && keys.some((k) => SESSION_KEYS.includes(k)))) {
     broadcast();
   }
@@ -590,7 +789,7 @@ chrome.storage.onChanged.addListener((changes, area) => {
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg?.type !== 'action') return;
   const action = { ...msg.action };
-  if (action.type === 'picker.start' && !action.tabId && sender.tab) action.tabId = sender.tab.id;
+  if ((action.type === 'picker.start' || action.type === 'camera.place') && !action.tabId && sender.tab) action.tabId = sender.tab.id;
   dispatch(action).then(sendResponse, (e) => sendResponse({ ok: false, error: String(e) }));
   return true;
 });
@@ -608,6 +807,8 @@ const COMMANDS = {
   'slack-ping': { type: 'slack.toggle' },
   'open-console': { type: 'console.open' },
   'tab-next': { type: 'tab.next' },
+  'slide-next': { type: 'slide.next' },
+  'slide-prev': { type: 'slide.prev' },
   'tab-prev': { type: 'tab.prev' },
 };
 

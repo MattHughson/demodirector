@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Demo Director",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Stage-manage live demos: veil parts of the page, then reveal them on cue from a Stream Deck or hotkey.",
   "minimum_chrome_version": "116",
   "permissions": [
@@ -140,6 +140,12 @@
     },
     "tab-prev": {
       "description": "Previous demo tab"
+    },
+    "slide-next": {
+      "description": "Next slide (Google Slides deck)"
+    },
+    "slide-prev": {
+      "description": "Previous slide (Google Slides deck)"
     }
   },
   "web_accessible_resources": [

@@ -52,12 +52,13 @@ async function loadShortcuts() {
 // ---------- render ----------
 
 let blinkTimer = 0;
+const sizeLabel = (size) => (typeof size === 'number' ? `${size}px` : String(size || 'm').toUpperCase());
 
 function renderCamera({ camera, settings }) {
   const secs = Number(settings.camera.blinkSeconds) || 30;
   clearTimeout(blinkTimer);
   let big = camera.on ? 'On' : 'Off';
-  let sub = camera.on ? `Size ${camera.size.toUpperCase()}` : 'Not visible to the audience';
+  let sub = camera.on ? `Size ${sizeLabel(camera.size)}` : 'Not visible to the audience';
   let hiddenPhase = false;
   if (camera.on && camera.blink) {
     const ms = secs * 1000;
@@ -65,9 +66,16 @@ function renderCamera({ camera, settings }) {
     hiddenPhase = Math.floor(elapsed / ms) % 2 === 1;
     const left = Math.ceil((ms - (elapsed % ms)) / 1000);
     big = hiddenPhase ? 'Blinking · hidden' : 'Blinking · visible';
-    sub = `${hiddenPhase ? 'Back' : 'Hides'} in ${left}s · every ${secs}s · size ${camera.size.toUpperCase()}`;
+    sub = `${hiddenPhase ? 'Back' : 'Hides'} in ${left}s · every ${secs}s · size ${sizeLabel(camera.size)}`;
     blinkTimer = setTimeout(() => renderCamera(state), 1000 - (elapsed % 1000) + 10);
   }
+  // Mirror into the Slides-mode strip.
+  $('#slCam').classList.toggle('cam-on', camera.on);
+  $('#slCamText').textContent = camera.on ? 'Camera on' : 'Camera off';
+  $('#slBlink').classList.toggle('on', camera.blink);
+  $('#slBlink').classList.toggle('blink-hidden', hiddenPhase);
+  $('#slBlinkText').textContent = camera.on && camera.blink ? sub.split(' · ')[0] : 'Blink';
+  document.querySelectorAll('#slSize [data-s]').forEach((x) => x.classList.toggle('on', x.dataset.s === camera.size));
   $('#camBig').textContent = big;
   $('#camSub').textContent = sub;
   const dot = $('#camDot');
@@ -147,7 +155,83 @@ function render(s) {
   renderVeils(s);
   renderSlack(s);
   refreshTabs(); // settings (tab list) may have changed
+  renderTimers();
 }
+
+// ---------- segments: timers + talking points ----------
+
+const fmt = (ms) => {
+  const t = Math.max(0, Math.floor(ms / 1000));
+  const h = Math.floor(t / 3600);
+  const m = Math.floor((t % 3600) / 60);
+  const s = String(t % 60).padStart(2, '0');
+  return h ? `${h}:${String(m).padStart(2, '0')}:${s}` : `${m}:${s}`;
+};
+const segKey = (t) => t.id || `u:${t.url}`;
+const validSeg = (t) => /^https?:\/\/\S+$/.test(t.url || '');
+function spent(id) {
+  if (!state) return 0;
+  const cur = state.segCurrent;
+  return (state.segTime[id] || 0) + (cur?.id === id ? Date.now() - cur.since : 0);
+}
+// '' | 'warnt' (≥ 80% of budget) | 'overt' (over budget)
+function pace(id, minutes) {
+  const budget = (Number(minutes) || 0) * 60000;
+  if (!budget) return '';
+  const r = spent(id) / budget;
+  return r > 1 ? 'overt' : r >= 0.8 ? 'warnt' : '';
+}
+const timeText = (id, minutes) => {
+  const budget = (Number(minutes) || 0) * 60000;
+  return budget ? `${fmt(spent(id))} / ${fmt(budget)}` : fmt(spent(id));
+};
+
+function renderTimers() {
+  if (!state) return;
+  const clock = $('#clock');
+  clock.classList.toggle('off', !state.liveStart);
+  clock.textContent = state.liveStart ? `⏱ ${fmt(Date.now() - state.liveStart)}` : 'clock starts when you go Live';
+
+  const segs = state.settings.tabs.filter(validSeg);
+  const i = segs.findIndex((t) => segKey(t) === state.segCurrent?.id);
+  const seg = segs[i];
+  const ns = $('#nowSeg');
+  ns.classList.toggle('on', !!seg);
+  ns.classList.remove('warnt', 'overt');
+  if (!seg) {
+    $('#nsKicker').textContent = segs.length ? 'Not on a segment' : 'No segments yet';
+    $('#nsLabel').textContent = segs.length ? 'Switch to one of your demo tabs' : 'Add them in Settings → Segments';
+    $('#nsTime').textContent = '';
+    $('#nsBar').style.width = '0';
+    $('#nsNotes').textContent = '';
+    $('#nsNotes').classList.add('empty');
+  } else {
+    const id = segKey(seg);
+    const budget = (Number(seg.minutes) || 0) * 60000;
+    const p = pace(id, seg.minutes);
+    if (p) ns.classList.add(p);
+    $('#nsKicker').textContent = `Segment ${i + 1} / ${segs.length}`;
+    $('#nsLabel').textContent = seg.label || seg.url;
+    $('#nsTime').textContent = timeText(id, seg.minutes);
+    $('#nsBar').style.width = budget ? `${Math.min(100, (spent(id) / budget) * 100)}%` : '0';
+    $('#nsNotes').textContent = seg.notes || 'No talking points for this segment. Add some in Settings → Segments.';
+    $('#nsNotes').classList.toggle('empty', !seg.notes);
+  }
+  // Slides mode: the deck segment's timer next to the slide number
+  const st = $('#slSegTime');
+  st.className = `segt ${seg ? pace(segKey(seg), seg.minutes) : ''}`;
+  st.textContent = seg ? timeText(segKey(seg), seg.minutes) : '';
+  // Run-of-show rows
+  document.querySelectorAll('#tablist .tabi').forEach((row) => {
+    const t = segs.find((x) => segKey(x) === row.dataset.id);
+    if (!t) return;
+    const pill = row.querySelector('.pill');
+    const time = spent(row.dataset.id);
+    pill.textContent = Number(t.minutes) || time ? timeText(row.dataset.id, t.minutes) : row.dataset.status;
+    pill.className = `pill ${pace(row.dataset.id, t.minutes)}`;
+  });
+}
+setInterval(renderTimers, 1000);
 
 // ---------- demo tabs ----------
 
@@ -162,6 +246,8 @@ async function renderTabs() {
   st.tabs.forEach((t, i) => {
     const b = document.createElement('button');
     b.className = `tabi${t.active ? ' active' : ''}${t.open ? '' : ' missing'}`;
+    b.dataset.id = t.id;
+    b.dataset.status = t.active ? 'ON SCREEN' : t.open ? 'OPEN' : 'NOT OPEN';
     b.innerHTML = `<span class="n">${i + 1}</span><span class="l"><b></b><small></small></span><span class="pill"></span>`;
     b.querySelector('b').textContent = t.label || new URL(t.url).host;
     b.querySelector('small').textContent = t.url.replace(/^https?:\/\//, '');
@@ -170,6 +256,7 @@ async function renderTabs() {
     b.onclick = () => send({ type: 'tab.activate', index: i });
     root.append(b);
   });
+  renderTimers();
   if (st.extra) {
     const note = document.createElement('div');
     note.className = 'tip warn';
@@ -286,6 +373,16 @@ async function renderSlides() {
   $('#thNextTitle').textContent = next?.title || '';
 }
 
+const slideMsg = (t) => {
+  $('#slMsg').textContent = t || '';
+  clearTimeout(slideMsg.t);
+  if (t) slideMsg.t = setTimeout(() => ($('#slMsg').textContent = ''), 4000);
+};
+$('#slPrev').onclick = () => send({ type: 'slide.prev' }).then((r) => slideMsg(r?.ok ? '' : r?.error));
+$('#slNext').onclick = () => send({ type: 'slide.next' }).then((r) => slideMsg(r?.ok ? '' : r?.error));
+$('#slCam').onclick = () => send({ type: 'camera.toggle' });
+$('#slBlink').onclick = () => send({ type: 'camera.blink' });
+$('#slSize').onclick = () => send({ type: 'camera.size' });
 $('#fontDown').onclick = () => bump(-0.1);
 $('#fontUp').onclick = () => bump(0.1);
 $('#peek').onclick = () => {

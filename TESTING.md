@@ -47,6 +47,8 @@ Useful pages (open them in a tab):
 | 2.6 | In Settings, click `dates`' **Hidden** button. Switch to the Studio tab. | The dates are back immediately, with no page reload. |
 | 2.7 | Reload the Studio tab. | The dates are still visible and the folders still hidden. The state survives the reload. |
 | 2.8 | Click around the Studio: open a drop, go back to the list, scroll. | The veils keep holding. Nothing flickers back. |
+| 2.10 | Start the picker, click a date subtitle, and set **Only hide if the text** to **looks like a date**. | Only date-bearing subtitles are outlined, never titles. The count drops to match. Save it as `dates2`. Those dates vanish and the titles stay, including after clicking around. |
+| 2.11 | Settings → Veils → `dates2`: change the filter to **starts with** `Dec`. | Only subtitles starting with "Dec" are hidden. Set it back to **(any text)** and the plain selector applies again. |
 | 2.9 | **[MATT]** Press ⌃⇧1, then ⌃⇧2. | Each press toggles dates, then folders, instantly. |
 
 ## 3. Director console
@@ -101,6 +103,17 @@ Before this section, open Settings and the console as **their own windows**, not
 | 7.6 | Console → **Next tab ▶**, then again. | It moves to Storefront, then wraps back to Studio. The console marks the current tab ON SCREEN. |
 | 7.7 | Settings: untick "Reset demo also restores these tabs", open an extra tab, and Reset. | The extra tab stays open, but the stage still resets. Tick the box again. |
 
+## 7b. Segments (run-of-show)
+
+| ID | Steps | Expected |
+|---|---|---|
+| 7b.1 | Settings → Segments: for Studio set Camera on arrival = **On**, time `0:30` and two lines of talking points. For Storefront set Camera = **Off** and time `1:00`. | The header shows "Planned total: 1:30". |
+| 7b.2 | Rehearse mode. Switch to the Studio tab and drag the camera bubble to the bottom-left. Drag its orange handle to make it bigger. | It follows the mouse, snaps to that corner and stays there. Settings shows "Camera spot: ↙ bottom-left · NNNpx". |
+| 7b.3 | Switch to Storefront, then back to Studio. | Storefront: the camera goes off. Studio: the camera comes back on at the dragged spot and size. |
+| 7b.4 | Watch the console for 30+ seconds on Studio. | The Now card shows "Segment 1 / 2 · Studio" with the talking points. The timer counts up and turns amber at 0:24, then red after 0:30. The Run of show row matches. |
+| 7b.5 | Go **Live**. | The header clock starts. Dragging the bubble does nothing. |
+| 7b.6 | **Reset demo**. | All segment timers go back to 0:00, and the clock restarts. |
+
 ## 8. Backup
 
 | ID | Steps | Expected |
@@ -119,6 +132,9 @@ Before this section, open Settings and the console as **their own windows**, not
 | 9.3 | **[MATT]** Advance the deck with the arrow keys or a clicker, a few slides forward and one back. | The slide number, title, notes and previews follow within about half a second each time. |
 | 9.4 | Switch to the Studio tab. | The console goes back to **DEMO MODE** (camera, veils, tabs, topics). Switching back to the deck returns to the notes. |
 | 9.5 | On the deck tab, click **Demo controls**, then **Back to notes**. Try **A+ / A−**. | You can peek at the demo controls and come back. The notes text resizes, and the size is remembered after the console reloads. |
+| 9.7 | Deck open in the **editor or published** view. Console (Slides mode) → **Next slide ▶** / **◀ Prev slide**. | The deck moves one slide per click without reloading. The notes follow, and it stops at the first and last slide. |
+| 9.8 | Deck in **Present** mode → **Next slide ▶**. | The deck advances. If it doesn't, note it as FAIL and say whether the console's notes changed. |
+| 9.9 | In Slides mode: **Camera**, **Blink**, **S/M/L** buttons. | The camera bubble responds on the deck tab (published or editor view). The Blink button shows "Hides in Ns" / "Back in Ns". |
 | 9.6 | Open any Google **Doc** (not Slides). | No `REHEARSE` chip appears there. Demo Director only runs on Slides pages. |
 
 ## Report format

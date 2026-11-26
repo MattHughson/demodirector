@@ -76,14 +76,19 @@
       core = own;
       p = el.parentElement;
     } else {
-      const path = [tagToken(el) + (position ? nthOfType(el) : '')];
+      // With `position`, pin the position at the lowest level that actually has
+      // same-type siblings (e.g. the 2nd Box in each row, when each Box holds
+      // one span), so title and subtitle stop matching each other.
+      const els = [el];
       p = el.parentElement;
-      while (p && p !== htmlEl && p !== doc.body && path.length < MAX_TAG_PATH) {
-        const strong = strongToken(p);
-        if (strong) break;
-        path.unshift(tagToken(p));
+      while (p && p !== htmlEl && p !== doc.body && els.length < MAX_TAG_PATH) {
+        if (strongToken(p)) break;
+        els.unshift(p);
         p = p.parentElement;
       }
+      let pin = -1;
+      if (position) for (let k = els.length - 1; k >= 0 && pin < 0; k--) if (nthOfType(els[k])) pin = k;
+      const path = els.map((e, k) => tagToken(e) + (k === pin ? nthOfType(e) : ''));
       const anchor = p && p !== htmlEl && p !== doc.body ? strongToken(p) : null;
       core = (anchor ? `${anchor} > ` : '') + path.join(' > ');
       if (anchor) p = p.parentElement;

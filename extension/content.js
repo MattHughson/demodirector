@@ -26,13 +26,101 @@
     }
   }
 
+  // Text filter: { mode: 'starts' | 'contains' | 'regex', value }. Elements are
+  // matched on their visible text, whitespace collapsed, case-insensitive.
+  const MONTH = '(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\\.?';
+  const DATE_RE = new RegExp(
+    [
+      `\\b${MONTH}\\s+\\d{1,2}\\b`, // Dec 11
+      `\\b\\d{1,2}\\s+${MONTH}`, // 11 Dec
+      '\\b\\d{4}-\\d{2}-\\d{2}\\b', // 2026-12-11
+      '\\b\\d{1,2}/\\d{1,2}(?:/\\d{2,4})?\\b', // 12/11, 12/11/2026
+      '\\b(?:today|yesterday|tomorrow)\\b',
+      '\\b(?:in\\s+)?\\d+\\s+(?:minute|hour|day|week|month|year)s?(?:\\s+ago)?\\b', // 3 days ago, in 2 weeks
+    ].join('|'),
+    'i'
+  );
+
+  function textMatcher(f) {
+    if (f?.mode === 'date') return (t) => DATE_RE.test(t);
+    if (!f?.value) return null;
+    const v = f.value.trim().toLowerCase();
+    if (f.mode === 'regex') {
+      try {
+        const re = new RegExp(f.value.trim(), 'i');
+        return (t) => re.test(t);
+      } catch {
+        return () => false;
+      }
+    }
+    return f.mode === 'contains' ? (t) => t.toLowerCase().includes(v) : (t) => t.toLowerCase().startsWith(v);
+  }
+
+  const textOf = (el) => (el.textContent || '').replace(/\s+/g, ' ').trim();
+
+  // Elements a selector list + optional text filter would hide.
+  function matchElements(selectors, filter) {
+    const sels = selectors.filter(validSelector);
+    if (!sels.length) return [];
+    let list;
+    try {
+      list = [...document.querySelectorAll(sels.join(', '))];
+    } catch {
+      return [];
+    }
+    const test = textMatcher(filter);
+    return test ? list.filter((e) => test(textOf(e))) : list;
+  }
+
   function renderCss() {
     // One rule per selector, so a single bad selector can't void the rest.
+    // Text-filtered veils can't be expressed in CSS: their matches get a
+    // data-dd-veil marker (see markText) and the rule targets that instead.
     styleEl.textContent = state.veils
       .flatMap((v) =>
-        v.selectors.filter(validSelector).map((s) => `html.${CLASS_PREFIX}${v.id} :is(${s}) { display: none !important; }`)
+        v.text?.mode
+          ? [`html.${CLASS_PREFIX}${v.id} [data-dd-veil~="${v.id}"] { display: none !important; }`]
+          : v.selectors.filter(validSelector).map((s) => `html.${CLASS_PREFIX}${v.id} :is(${s}) { display: none !important; }`)
       )
       .join('\n');
+    markText();
+  }
+
+  // Tag (never remove) the page's own elements that a text veil matches. Runs
+  // again whenever the app re-renders, before the browser paints.
+  const MARK = 'data-dd-veil';
+  function markText() {
+    const textVeils = state.veils.filter((v) => v.text?.mode);
+    const want = new Map(); // element → Set(veil ids)
+    for (const v of textVeils) {
+      for (const e of matchElements(v.selectors, v.text)) {
+        if (!want.has(e)) want.set(e, new Set());
+        want.get(e).add(v.id);
+      }
+    }
+    for (const e of document.querySelectorAll(`[${MARK}]`)) if (!want.has(e)) e.removeAttribute(MARK);
+    for (const [e, ids] of want) {
+      const val = [...ids].sort().join(' ');
+      if (e.getAttribute(MARK) !== val) e.setAttribute(MARK, val);
+    }
+    textWatch(textVeils.length > 0);
+  }
+
+  let markQueued = false;
+  const textObserver = new MutationObserver(() => {
+    if (markQueued) return;
+    markQueued = true;
+    queueMicrotask(() => {
+      markQueued = false;
+      markText();
+    });
+  });
+  let textWatching = false;
+  function textWatch(on) {
+    if (on === textWatching) return;
+    textWatching = on;
+    if (on) textObserver.observe(document.documentElement, { childList: true, subtree: true, characterData: true });
+    else textObserver.disconnect();
   }
 
   function desiredClasses() {
@@ -105,6 +193,11 @@
       .radios { display: flex; gap: 14px; font-weight: 400 !important; }
       .radios label { display: flex; align-items: center; gap: 5px; font-weight: 400; }
       .count { font-size: 12px; color: #475467; }
+      .textf { display: grid; gap: 6px; }
+      .textf .inline { display: flex; align-items: center; gap: 8px; }
+      .textf select { font: inherit; font-weight: 400; padding: 4px 6px; border: 1px solid #d0d5dd; border-radius: 6px; color: #101828; background: #fff; }
+      .textf .hint { font-size: 12px; color: #475467; overflow-wrap: anywhere; }
+      [hidden] { display: none !important; }
       .count.bad { color: #d92d20; }
       .row { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
       .row button { white-space: nowrap; }
@@ -161,15 +254,19 @@
     return b;
   }
 
-  function drawMatches(sel, limit = 300) {
-    let list = [];
-    try {
-      list = [...document.querySelectorAll(sel)].slice(0, limit);
-    } catch {}
-    for (const m of list) {
+  function drawElements(list, limit = 300) {
+    for (const m of list.slice(0, limit)) {
       const r = m.getBoundingClientRect();
       if (r.width || r.height) box(r, 'match');
     }
+  }
+
+  function drawMatches(sel, limit = 300) {
+    let list = [];
+    try {
+      list = [...document.querySelectorAll(sel)];
+    } catch {}
+    drawElements(list, limit);
   }
 
   function drawHover() {
@@ -200,7 +297,7 @@
     if (picker.phase === 'hover') drawHover();
     else {
       clearOverlay();
-      drawMatches(form.textarea.value.split('\n').map((s) => s.trim()).filter(Boolean).join(', ') || ':not(*)');
+      drawElements(matchElements(formSelectors(), formText()));
     }
     picker.raf = requestAnimationFrame(loop);
   }
@@ -281,6 +378,13 @@
         <label><input type="radio" name="scope" value="unique"> Just this one</label>
       </div>
       <label>Selectors (one per line) <textarea name="sel" spellcheck="false"></textarea></label>
+      <div class="textf">
+        <label class="inline">Only hide if the text
+          <select name="tmode"><option value="">(any text)</option><option value="date">looks like a date</option><option value="starts">starts with</option><option value="contains">contains</option><option value="regex">matches pattern</option></select>
+        </label>
+        <input type="text" name="tval" placeholder="e.g. Dec" autocomplete="off" hidden>
+        <div class="hint" hidden></div>
+      </div>
       <div class="count"></div>
       <div class="row"><button type="button" data-act="add" title="Pick another element for this same veil">+ Add another</button><button type="button" data-act="back">Back</button><button type="button" data-act="cancel">Cancel</button><button type="button" class="primary" data-act="save">Save veil</button></div>`;
     const q = (s) => panel.querySelector(s);
@@ -288,16 +392,26 @@
       panel,
       name: q('input[name=name]'),
       textarea: q('textarea'),
+      tmode: q('select[name=tmode]'),
+      tval: q('input[name=tval]'),
+      hint: q('.hint'),
       countEl: q('.count'),
       save: q('[data-act=save]'),
       q,
     };
   })();
 
+  const formSelectors = () => form.textarea.value.split('\n').map((s) => s.trim()).filter(Boolean);
+  const formText = () => {
+    const mode = form.tmode.value;
+    if (mode === 'date') return { mode };
+    return mode && form.tval.value.trim() ? { mode, value: form.tval.value.trim() } : null;
+  };
+
   function updateCount() {
-    const sels = form.textarea.value.split('\n').map((s) => s.trim()).filter(Boolean);
+    const sels = formSelectors();
     const bad = sels.filter((s) => !validSelector(s));
-    const n = bad.length ? 0 : DDSelector.count(sels.join(', ') || ':not(*)', document);
+    const n = bad.length ? 0 : matchElements(sels, formText()).length;
     form.countEl.textContent = bad.length
       ? `Invalid selector: ${bad[0]}`
       : `${n} element${n === 1 ? '' : 's'} will be hidden`;
@@ -313,6 +427,21 @@
 
   form.q('.radios').addEventListener('change', fillSelector);
   form.textarea.addEventListener('input', updateCount);
+  form.tval.addEventListener('input', updateCount);
+  form.tmode.addEventListener('change', () => {
+    const on = !!form.tmode.value;
+    const needsValue = on && form.tmode.value !== 'date';
+    form.tval.hidden = !needsValue;
+    form.hint.hidden = !on;
+    // Start from the first word of the clicked element's own text.
+    if (needsValue && !form.tval.value && picker.target) {
+      const w = textOf(picker.target).split(' ')[0] || '';
+      form.tval.value = form.tmode.value === 'regex' ? `^${w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}` : w;
+    }
+    if (on && picker.target) form.hint.textContent = `You clicked: "${textOf(picker.target).slice(0, 80)}"`;
+    updateCount();
+    if (needsValue) form.tval.focus();
+  });
   form.name.addEventListener('input', updateCount);
   form.panel.addEventListener('keydown', (e) => {
     e.stopPropagation(); // keep the page's own shortcuts out of our inputs
@@ -326,7 +455,7 @@
   };
   form.q('[data-act=back]').addEventListener('click', backToHover);
   form.q('[data-act=add]').addEventListener('click', () => {
-    picker.kept = form.textarea.value.split('\n').map((s) => s.trim()).filter(Boolean);
+    picker.kept = formSelectors();
     backToHover();
   });
   form.save.addEventListener('click', saveVeil);
@@ -334,14 +463,18 @@
   function openForm() {
     picker.phase = 'form';
     form.q('input[value=position]').checked = true;
+    if (!picker.kept.length) {
+      form.tmode.value = '';
+      form.tval.value = '';
+      form.tval.hidden = form.hint.hidden = true;
+    }
     fillSelector();
     ui.appendChild(form.panel);
     setTimeout(() => form.name.focus(), 0);
   }
 
   async function saveVeil() {
-    const selectors = form.textarea.value.split('\n').map((s) => s.trim()).filter(Boolean);
-    const res = await send({ type: 'veil.create', name: form.name.value.trim(), selectors });
+    const res = await send({ type: 'veil.create', name: form.name.value.trim(), selectors: formSelectors(), text: formText() });
     if (res?.ok) stopPicker();
     else {
       form.countEl.textContent = res?.error || 'Could not save';

@@ -40,6 +40,10 @@ function render(state) {
       <div class="fields">
         <input type="text" name="name" aria-label="Name">
         <textarea name="sel" rows="${Math.max(2, v.selectors.length)}" spellcheck="false" aria-label="Selectors, one per line"></textarea>
+        <div class="textrow">Only if the text
+          <select name="tmode" aria-label="Text filter"><option value="">(any text)</option><option value="date">looks like a date</option><option value="starts">starts with</option><option value="contains">contains</option><option value="regex">matches pattern</option></select>
+          <input type="text" name="tval" aria-label="Text to match" placeholder="e.g. Dec">
+        </div>
         <div class="meta muted">Class on &lt;html&gt;: <code>veil-${v.id}</code></div>
       </div>
       <div class="side">
@@ -51,6 +55,24 @@ function render(state) {
     const sel = card.querySelector('[name=sel]');
     name.value = v.name;
     sel.value = v.selectors.join('\n');
+    const tmode = card.querySelector('[name=tmode]');
+    const tval = card.querySelector('[name=tval]');
+    tmode.value = v.text?.mode || '';
+    tval.value = v.text?.value || '';
+    const needsValue = () => !!tmode.value && tmode.value !== 'date';
+    tval.hidden = !needsValue();
+    const saveText = async () => {
+      tval.hidden = !needsValue();
+      if (needsValue() && !tval.value.trim()) return tval.focus();
+      await send({ type: 'veil.update', id: v.id, text: tmode.value ? { mode: tmode.value, value: tval.value } : null });
+      status('Saved');
+    };
+    tmode.onchange = saveText;
+    tval.onchange = saveText;
+    for (const x of [tmode, tval]) {
+      x.addEventListener('focus', () => (editing = true));
+      x.addEventListener('blur', () => (editing = false));
+    }
     const toggle = card.querySelector('.toggle');
     toggle.textContent = on ? 'Hidden' : 'Shown';
     toggle.setAttribute('aria-pressed', String(on));
@@ -147,6 +169,9 @@ function renderSettings(state) {
   document.documentElement.style.setProperty('--accent', s.lowerThird.accent);
   $('#device').value = s.camera.deviceId || '';
   $('#preview').classList.toggle('mirror', s.camera.mirror !== false);
+  const pv = document.querySelector('.preview');
+  pv.style.setProperty('--ring', s.camera.ringColor || '#ffffff');
+  pv.style.setProperty('--ring-w', `${Number(s.camera.ringWidth ?? 3)}px`);
   renderTopics(state);
   renderTabs(state);
   renderAvatar();
@@ -343,27 +368,65 @@ function saveTabs(list) {
   return send({ type: 'settings.update', patch: { tabs: list } }).then(() => status('Saved'));
 }
 
+const CORNERS = { tl: '↖ top-left', tr: '↗ top-right', bl: '↙ bottom-left', br: '↘ bottom-right' };
+const fmtMin = (m) => (m ? `${Math.floor(m)}:${String(Math.round((m % 1) * 60)).padStart(2, '0')}` : '');
+// "2:30", "2.5" or "2" → minutes
+function parseMin(v) {
+  const t = String(v || '').trim();
+  if (!t) return 0;
+  const m = /^(\d+):(\d{1,2})$/.exec(t);
+  if (m) return Number(m[1]) + Number(m[2]) / 60;
+  const n = Number(t);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+// Each demo tab is a segment of the run-of-show: tab + camera preset + talking points + time budget.
 function renderTabs(state) {
   const root = $('#tabs');
   if (root.contains(document.activeElement)) return;
   const list = state.settings.tabs;
   root.replaceChildren();
   if (!list.length) {
-    root.innerHTML = '<p class="muted" style="margin:0">No demo tabs yet. Reset will leave your tabs alone until you add some.</p>';
+    root.innerHTML = '<p class="muted" style="margin:0">No segments yet. Reset will leave your tabs alone until you add some.</p>';
   }
+  const total = list.reduce((a, t) => a + (Number(t.minutes) || 0), 0);
+  $('#segTotal').textContent = total ? `Planned total: ${fmtMin(total)}` : '';
   list.forEach((t, i) => {
-    const row = document.createElement('div');
-    row.className = 'tabrow';
-    row.innerHTML = `<span class="n">${i + 1}</span>
-      <input type="text" name="label" placeholder="Label, e.g. Studio" aria-label="Label">
-      <input type="text" name="url" placeholder="https://…" aria-label="URL" spellcheck="false">
-      <span class="ops"><button class="primary" data-allow hidden title="Let Demo Director run on this site">Allow</button><button data-d="-1" title="Move up">▲</button><button data-d="1" title="Move down">▼</button><button class="danger" data-x title="Remove">✕</button></span>`;
-    const label = row.querySelector('[name=label]');
-    const url = row.querySelector('[name=url]');
+    const card = document.createElement('div');
+    card.className = 'seg';
+    card.innerHTML = `
+      <div class="tabrow"><span class="n">${i + 1}</span>
+        <input type="text" name="label" placeholder="Label, e.g. Studio" aria-label="Label">
+        <input type="text" name="url" placeholder="https://…" aria-label="URL" spellcheck="false">
+        <span class="ops"><button class="primary" data-allow hidden title="Let Demo Director run on this site">Allow</button><button data-d="-1" title="Move up">▲</button><button data-d="1" title="Move down">▼</button><button class="danger" data-x title="Remove">✕</button></span>
+      </div>
+      <div class="segopts">
+        <label>Camera on arrival <select name="cmode">
+          <option value="keep">Keep as is</option><option value="on">On</option><option value="blink">On + blink</option><option value="off">Off</option>
+        </select></label>
+        <label>Time budget <input type="text" name="minutes" placeholder="m:ss" inputmode="decimal"></label>
+        <span class="campos"></span>
+      </div>
+      <label class="notes">Talking points <textarea name="notes" rows="2" placeholder="What to say and do on this screen"></textarea></label>`;
+    const $c = (q) => card.querySelector(q);
+    const label = $c('[name=label]');
+    const url = $c('[name=url]');
     label.value = t.label || '';
     url.value = t.url || '';
     url.classList.toggle('bad', !!t.url && !validUrl(t.url));
-    const allow = row.querySelector('[data-allow]');
+    $c('[name=cmode]').value = t.camera?.mode || 'keep';
+    $c('[name=minutes]').value = fmtMin(Number(t.minutes) || 0);
+    $c('[name=notes]').value = t.notes || '';
+    const pos = t.camera?.pos;
+    const campos = $c('.campos');
+    if (pos) {
+      campos.innerHTML = '<span class="muted"></span> <button data-clearpos>Reset spot</button>';
+      campos.firstChild.textContent = `Camera spot: ${CORNERS[pos.corner]} · ${t.camera.size}px`;
+    } else {
+      campos.innerHTML = '<span class="muted">Camera spot: default. Drag the bubble on this tab in Rehearse mode to set it.</span>';
+    }
+
+    const allow = $c('[data-allow]');
     const pattern = originPattern(t.url || '');
     if (pattern) {
       chrome.permissions.contains({ origins: [pattern] }).then((has) => {
@@ -374,15 +437,24 @@ function renderTabs(state) {
     allow.onclick = async () => {
       if (await allowSites([url.value.trim()])) allow.hidden = true;
     };
-    const commit = () => {
-      const next = current.settings.tabs.map((x, k) => (k !== i ? x : { label: label.value.trim(), url: url.value.trim() }));
+    // Keep every other field (id, camera spot, notes…) when one changes.
+    const update = (patch) => saveTabs(current.settings.tabs.map((x, k) => (k !== i ? x : { ...x, ...patch })));
+    const commitTab = () => {
       url.classList.toggle('bad', !!url.value.trim() && !validUrl(url.value.trim()));
       allowSites([url.value.trim()]); // first, while the gesture is fresh
-      saveTabs(next);
+      update({ label: label.value.trim(), url: url.value.trim() });
     };
-    label.onchange = commit;
-    url.onchange = commit;
-    row.querySelectorAll('[data-d]').forEach((b) => {
+    label.onchange = commitTab;
+    url.onchange = commitTab;
+    $c('[name=cmode]').onchange = (e) => update({ camera: { ...(current.settings.tabs[i].camera || {}), mode: e.target.value } });
+    $c('[name=minutes]').onchange = (e) => update({ minutes: parseMin(e.target.value) });
+    $c('[name=notes]').onchange = (e) => update({ notes: e.target.value });
+    const clear = $c('[data-clearpos]');
+    if (clear) clear.onclick = () => {
+      const { pos: _p, size: _s, ...rest } = current.settings.tabs[i].camera || {};
+      update({ camera: rest });
+    };
+    card.querySelectorAll('[data-d]').forEach((b) => {
       b.onclick = () => {
         const next = [...current.settings.tabs];
         const j = i + Number(b.dataset.d);
@@ -391,8 +463,8 @@ function renderTabs(state) {
         saveTabs(next);
       };
     });
-    row.querySelector('[data-x]').onclick = () => saveTabs(current.settings.tabs.filter((_, k) => k !== i));
-    root.append(row);
+    $c('[data-x]').onclick = () => saveTabs(current.settings.tabs.filter((_, k) => k !== i));
+    root.append(card);
   });
 }
 

@@ -16,6 +16,9 @@
     .veil .slot { font-weight: 700; font-size: 15px; padding-top: 5px; text-align: center; font-variant-numeric: tabular-nums; }
     .veil .fields { display: grid; gap: 6px; min-width: 0; }
     .veil .meta { font-size: 12px; }
+    .veil .textrow { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12px; color: var(--muted); }
+    .veil .textrow select { width: auto; }
+    .veil .textrow input { flex: 1; min-width: 140px; width: auto; }
     .veil .side { display: grid; gap: 6px; justify-items: end; }
     .veil .order { display: flex; gap: 4px; }
     .veil .order button { padding: 2px 8px; }
@@ -32,7 +35,8 @@
     label.check { display: flex; align-items: center; gap: 8px; font-weight: 600; color: var(--text); grid-template-columns: none; }
     .card { padding: 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); display: grid; gap: 12px; }
     .cam-row { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
-    .preview { width: 120px; height: 120px; border-radius: 50%; overflow: hidden; background: #101828; flex: none; }
+    .preview { width: 120px; height: 120px; border-radius: 50%; overflow: hidden; background: #101828; flex: none;
+      box-shadow: 0 0 0 var(--ring-w, 3px) var(--ring, #fff), 0 4px 14px rgba(16,24,40,.25); margin: 6px; }
     .preview video { width: 100%; height: 100%; object-fit: cover; }
     .preview video.mirror { transform: scaleX(-1); }
     .topics { display: grid; gap: 6px; }
@@ -45,7 +49,16 @@
     .avatar img, .avatar .ph { width: 48px; height: 48px; border-radius: 10px; object-fit: cover; background: #4a154b; color: #fff;
       display: grid; place-items: center; font-weight: 700; }
     code { font-size: 12px; }
-    .tabs { display: grid; gap: 6px; }
+    .tabs { display: grid; gap: 10px; }
+    .seg { display: grid; gap: 8px; padding: 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); }
+    .segopts { display: flex; gap: 12px; flex-wrap: wrap; align-items: end; padding-left: 32px; }
+    .segopts label, .seg .notes { display: grid; gap: 4px; font-size: 12px; font-weight: 600; color: var(--muted); }
+    .segopts select, .segopts input { width: auto; min-width: 90px; font-weight: 400; }
+    .segopts .campos { font-size: 12px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .segopts .campos button { padding: 3px 8px; font-size: 12px; }
+    .seg .notes { padding-left: 32px; }
+    .seg .notes textarea { font: inherit; font-weight: 400; }
+    @media (max-width: 620px) { .segopts, .seg .notes { padding-left: 0; } }
     .tabrow { display: grid; grid-template-columns: 24px minmax(120px, 1fr) 2fr auto; gap: 8px; align-items: center; }
     .tabrow .n { font-weight: 700; text-align: center; font-variant-numeric: tabular-nums; }
     .tabrow .ops { display: flex; gap: 4px; }
@@ -78,13 +91,13 @@
   </section>
 
   <section>
-    <h2>Demo tabs</h2>
-    <p class="muted">The tabs your demo needs, in order. <b>Reset demo</b> rebuilds your demo window (the last browser window you used) to exactly these tabs. It keeps or reopens each one at its starting URL, closes every other tab in that window, and focuses tab 1. Other windows and the console are left alone. A tab counts as a match if it's on the same site at or below the URL's path.</p>
+    <h2>Segments (demo tabs) <span id="segTotal" class="muted" style="font-weight:500;font-size:12px"></span></h2>
+    <p class="muted">Each segment is one tab of your run-of-show, with its own camera preset, talking points and time budget. The console shows the current segment's notes and timer. To set the camera spot, open the tab in Rehearse mode and drag the bubble (resize it from its orange handle). The tabs your demo needs, in order. <b>Reset demo</b> rebuilds your demo window (the last browser window you used) to exactly these tabs. It keeps or reopens each one at its starting URL, closes every other tab in that window, and focuses tab 1. Other windows and the console are left alone. A tab counts as a match if it's on the same site at or below the URL's path.</p>
     <p class="muted">Demo Director runs on <code>localhost:3333</code> and <code>*.app.github.dev</code> by default. For any other site (e.g. the storefront), click <b>Allow</b> on its row so the veils, camera, topics and Slack post work there too.</p>
     <div class="card">
       <div class="tabs" id="tabs"></div>
       <div class="bar">
-        <button id="tabAdd">+ Add tab</button>
+        <button id="tabAdd">+ Add segment</button>
         <button id="tabCapture" title="Replace the list with the web tabs open in your last-used window">Use tabs from my window</button>
         <button id="tabRebuild">Rebuild tabs now</button>
       </div>
@@ -129,6 +142,8 @@
         <label>Large (px) <input type="number" min="60" max="900" data-path="camera.sizes.l"></label>
         <label>Offset top (px) <input type="number" min="0" data-path="camera.offsetTop"></label>
         <label>Offset right (px) <input type="number" min="0" data-path="camera.offsetRight"></label>
+        <label>Ring colour <input type="color" data-path="camera.ringColor"></label>
+        <label>Ring width (px, 0 = none) <input type="number" min="0" max="20" data-path="camera.ringWidth"></label>
       </div>
     </div>
   </section>
