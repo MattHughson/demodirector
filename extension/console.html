@@ -13,6 +13,7 @@
       color-scheme: dark;
     }
     * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
     body { margin: 0; background: var(--bg); color: var(--text);
       font: 15px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; padding: 16px; }
     button { font: inherit; color: inherit; cursor: pointer; }
@@ -107,6 +108,28 @@
     .tip b { color: var(--text); font-weight: 600; }
     .warn { color: var(--warn); }
 
+    /* Slides mode */
+    .slides { display: grid; grid-template-columns: minmax(0, 1fr) minmax(220px, 30%); gap: 14px; align-items: start; }
+    @media (max-width: 760px) { .slides { grid-template-columns: 1fr; } }
+    .slides .main { background: var(--card); border: 1px solid var(--accent); border-radius: 16px; padding: 18px 22px; display: grid; gap: 12px; min-height: 60vh; align-content: start; }
+    .slides .meta { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+    .slides .num { font-size: 15px; font-weight: 800; letter-spacing: .1em; color: var(--accent); text-transform: uppercase; }
+    .slides .stitle { font-size: 22px; font-weight: 800; }
+    .notes { font-size: calc(26px * var(--notes-scale, 1)); line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .notes.empty { color: var(--muted); font-style: italic; }
+    .slides aside { display: grid; gap: 12px; }
+    .thumb { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 10px; display: grid; gap: 6px; }
+    .thumb .cap { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .1em; font-weight: 700; }
+    .thumb .img { aspect-ratio: 16 / 9; border-radius: 8px; background: var(--bg); display: grid; place-items: center; overflow: hidden;
+      color: var(--muted); font-size: 13px; text-align: center; padding: 8px; }
+    .thumb img { width: 100%; height: 100%; object-fit: contain; display: block; }
+    .thumb .t { font-size: 14px; font-weight: 700; }
+    .tools { display: flex; gap: 6px; flex-wrap: wrap; }
+    .tools button { padding: 6px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--card2); font-weight: 700; }
+    .warn-box { padding: 10px 12px; border-radius: 10px; border: 1px solid var(--warn); color: var(--warn); font-size: 13px; }
+    .modepill { font-size: 12px; font-weight: 800; letter-spacing: .1em; padding: 4px 10px; border-radius: 999px; background: var(--card2); color: var(--muted); }
+    .modepill.slides-on { background: var(--accent); color: #fff; }
+
     .foot { margin-top: 14px; color: var(--muted); font-size: 12px; display: flex; gap: 12px; flex-wrap: wrap; justify-content: space-between; }
     .foot button { background: none; border: 0; color: var(--muted); text-decoration: underline; padding: 0; }
   </style>
@@ -115,12 +138,30 @@
   <header>
     <button class="mode" id="mode" title="Switch Rehearse / Live"><span class="dot"></span><span id="modeText">REHEARSE</span></button>
     <kbd data-cmd="toggle-mode"></kbd>
+    <span class="modepill" id="viewPill">DEMO MODE</span>
     <span class="spacer"></span>
     <span class="conn" id="conn" title="Stream Deck plugin arrives in phase 4"><i></i><span>Stream Deck: not connected</span></span>
     <button class="reset" id="reset">Reset demo <kbd data-cmd="reset"></kbd></button>
   </header>
 
-  <main>
+  <div class="slides" id="slidesView" hidden>
+    <div class="main">
+      <div class="meta"><span class="num" id="slNum"></span><span class="stitle" id="slTitle"></span></div>
+      <div id="slWarn"></div>
+      <div class="notes" id="slNotes"></div>
+    </div>
+    <aside>
+      <div class="thumb"><span class="cap">Now</span><div class="img" id="thNow"></div></div>
+      <div class="thumb"><span class="cap">Next</span><div class="img" id="thNext"></div><span class="t" id="thNextTitle"></span></div>
+      <div class="tools">
+        <button id="fontDown" title="Smaller notes">A−</button><button id="fontUp" title="Bigger notes">A+</button>
+        <button id="peek" title="Show the demo controls while on the slides tab">Demo controls</button>
+      </div>
+      <div class="tip">Advance the deck with your clicker or arrow keys. The notes follow the slide in the tab's URL.</div>
+    </aside>
+  </div>
+
+  <main id="demoView">
     <div class="col">
     <section>
       <h2>Camera</h2>
@@ -184,6 +225,7 @@
   </div>
 
   <script src="icons.js"></script>
+  <script src="deck.js"></script>
   <script src="console.js" type="module"></script>
 </body>
 </html>

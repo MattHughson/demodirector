@@ -73,6 +73,14 @@ Open it from the popup (**Console**), from Settings, or with the `open-console` 
 
 It shows everything live: Rehearse/Live, camera state (with a countdown to the next blink), the current topic with the full list of 10 and a marker on the next one, each veil (HIDDEN or SHOWN), and the Slack post. Each item shows its shortcut, with a dashed outline if it isn't bound yet. Clicking anything triggers it, so the console doubles as a backup for the Stream Deck.
 
+## Slides and speaker notes
+
+1. Add your Google Slides deck as a demo tab. Present mode, the published view and the editor all work.
+2. In **Settings → Slides & speaker notes**, paste the deck's editor link and click **Load notes from Google**. Chrome asks once for Google access. The deck is downloaded as .pptx with your own Google login and read locally. If that fails, use **Upload .pptx instead** (in Slides: File → Download → Microsoft PowerPoint).
+3. When the deck's tab is on screen, the console switches to **Slides mode**: big notes for the current slide, the slide number and title, and previews of the current and next slide. **A− / A+** resize the notes, and **Demo controls** lets you peek at the demo controls. Switch to any other tab and it's back to **Demo mode**.
+
+You advance the deck yourself (clicker, arrow keys or a Stream Deck hotkey). The notes follow the slide named in the tab's URL (`slide=id.<pageId>`). Edited the deck? Click **Load notes** again. Google access only adds Demo Director to Slides pages, never the rest of Docs or Drive.
+
 ## Modes
 
 - **Rehearse**: picker enabled, a small chip on the page, grey badge.

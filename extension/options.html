@@ -94,6 +94,22 @@
   </section>
 
   <section>
+    <h2>Slides &amp; speaker notes</h2>
+    <p class="muted">Add your Google Slides deck as a demo tab (Present mode, published, or the editor) and load its notes here. When that tab is on screen, the Director console switches to <b>Slides mode</b> and shows the current slide's notes as you advance. On any other tab it's back to <b>Demo mode</b>.</p>
+    <div class="card">
+      <label class="field">Deck URL (any Google Slides link to the deck) <input type="text" id="deckUrl" placeholder="https://docs.google.com/presentation/d/…/edit" spellcheck="false"></label>
+      <div class="bar">
+        <button id="deckLoad" class="primary">Load notes from Google</button>
+        <button id="deckUpload" title="In Slides: File → Download → Microsoft PowerPoint (.pptx)">Upload .pptx instead…</button>
+        <input id="deckFile" type="file" accept=".pptx,application/vnd.openxmlformats-officedocument.presentationml.presentation" hidden>
+        <button id="deckClear">Clear</button>
+      </div>
+      <div id="deckStatus" class="muted" style="font-size:12px"></div>
+      <details id="deckList"><summary class="muted" style="cursor:pointer;font-size:12px">Show slides and notes</summary><ol id="deckSlides" style="margin:8px 0 0;padding-left:22px;display:grid;gap:6px;font-size:12px"></ol></details>
+    </div>
+  </section>
+
+  <section>
     <h2>Camera bubble</h2>
     <p class="muted">The bubble is drawn inside the shared tab, top-right. Grant access once here, since the extension asks for the camera and not each site.</p>
     <div class="card">
@@ -179,6 +195,7 @@
   </section>
 </main>
 <script src="icons.js"></script>
+<script src="deck.js"></script>
 <script src="options.js" type="module"></script>
 </body>
 </html>

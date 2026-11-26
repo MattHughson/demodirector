@@ -110,6 +110,17 @@ Before this section, open Settings and the console as **their own windows**, not
 
 ---
 
+## 9. Slides and speaker notes
+
+| ID | Steps | Expected |
+|---|---|---|
+| 9.1 | Settings → Slides & speaker notes: paste the deck's **editor** link and click **Load notes from Google**. **[MATT]** Accept Chrome's Google access prompt. | The status reads "Loaded N slides (M with notes) · … · from Google". "Show slides and notes" lists every slide's title and notes. If it fails, note the error and try **Upload .pptx instead**. |
+| 9.2 | Add the deck as a demo tab and open it (Present mode or the published link). Look at the console. | The header pill turns orange: **SLIDES MODE**. Notes for the current slide fill the left side, and Now/Next previews appear on the right. |
+| 9.3 | **[MATT]** Advance the deck with the arrow keys or a clicker, a few slides forward and one back. | The slide number, title, notes and previews follow within about half a second each time. |
+| 9.4 | Switch to the Studio tab. | The console goes back to **DEMO MODE** (camera, veils, tabs, topics). Switching back to the deck returns to the notes. |
+| 9.5 | On the deck tab, click **Demo controls**, then **Back to notes**. Try **A+ / A−**. | You can peek at the demo controls and come back. The notes text resizes, and the size is remembered after the console reloads. |
+| 9.6 | Open any Google **Doc** (not Slides). | No `REHEARSE` chip appears there. Demo Director only runs on Slides pages. |
+
 ## Report format
 
 Paste this back to Claude Code:

@@ -399,3 +399,83 @@ $('#tabRebuild').onclick = async () => {
   const res = await send({ type: 'tabs.rebuild' });
   status(res.ok ? `Tabs rebuilt: ${res.opened} opened, ${res.closed} closed` : res.error);
 };
+
+// ----- Slides & speaker notes -----
+
+const deckStatus = (t, bad) => {
+  $('#deckStatus').textContent = t;
+  $('#deckStatus').style.color = bad ? 'var(--live)' : '';
+};
+
+async function renderDeck() {
+  const { deck } = await chrome.storage.local.get('deck');
+  if (deck && document.activeElement !== $('#deckUrl')) $('#deckUrl').value = deck.url || '';
+  const list = $('#deckSlides');
+  list.replaceChildren();
+  if (!deck) {
+    deckStatus('No deck loaded.');
+    $('#deckList').hidden = true;
+    return;
+  }
+  const withNotes = deck.slides.filter((s) => s.notes).length;
+  const unmapped = deck.slides.filter((s) => !s.pageId).length;
+  deckStatus(
+    `Loaded ${deck.slides.length} slides (${withNotes} with notes) · ${new Date(deck.loadedAt).toLocaleString()} · ${deck.source === 'upload' ? 'from uploaded file' : 'from Google'}` +
+      (unmapped ? ` · ${unmapped} slide(s) couldn't be matched to Google ids, so notes may not follow on those` : '')
+  );
+  $('#deckList').hidden = false;
+  for (const sl of deck.slides) {
+    const li = document.createElement('li');
+    li.innerHTML = '<b></b><div class="muted" style="white-space:pre-wrap"></div>';
+    li.querySelector('b').textContent = sl.title || '(untitled)';
+    li.querySelector('div').textContent = sl.notes || '(no notes)';
+    list.append(li);
+  }
+}
+
+async function saveDeck(slides, source) {
+  const url = $('#deckUrl').value.trim();
+  const deck = { id: DDDeck.deckIdFrom(url), url, slides, source, loadedAt: Date.now() };
+  await chrome.storage.local.set({ deck });
+  renderDeck();
+  status('Notes loaded');
+}
+
+$('#deckLoad').onclick = async () => {
+  const id = DDDeck.deckIdFrom($('#deckUrl').value);
+  if (!id) return deckStatus('Paste a Google Slides link first (docs.google.com/presentation/d/…).', true);
+  if ($('#deckUrl').value.includes('/d/e/')) return deckStatus('That is a "Publish to web" link, which hides the deck id. Paste the editor link (…/d/<id>/edit) instead; it still works with the published tab.', true);
+  // Ask for Google access inside the click (Chrome requires a user gesture).
+  const ok = await chrome.permissions.request({ origins: DDDeck.GOOGLE_ORIGINS }).catch(() => false);
+  if (!ok) return deckStatus('Google access not granted. Use "Upload .pptx instead".', true);
+  deckStatus('Downloading deck from Google…');
+  try {
+    const slides = await DDDeck.parsePptx(await DDDeck.fetchPptx(id));
+    await saveDeck(slides, 'google');
+  } catch (e) {
+    deckStatus(`${e.message}. Try "Upload .pptx instead".`, true);
+  }
+};
+$('#deckUpload').onclick = () => $('#deckFile').click();
+$('#deckFile').onchange = async (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  if (!DDDeck.deckIdFrom($('#deckUrl').value)) deckStatus('Tip: also paste the deck URL so the console knows which tab is the deck.', true);
+  try {
+    await saveDeck(await DDDeck.parsePptx(await file.arrayBuffer()), 'upload');
+  } catch (err) {
+    deckStatus(err.message, true);
+  }
+};
+$('#deckUrl').onchange = async () => {
+  const { deck } = await chrome.storage.local.get('deck');
+  if (deck) await chrome.storage.local.set({ deck: { ...deck, url: $('#deckUrl').value.trim(), id: DDDeck.deckIdFrom($('#deckUrl').value) } });
+};
+$('#deckClear').onclick = async () => {
+  await chrome.storage.local.remove('deck');
+  $('#deckUrl').value = '';
+  renderDeck();
+};
+chrome.storage.onChanged.addListener((c, area) => area === 'local' && c.deck && renderDeck());
+renderDeck();

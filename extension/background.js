@@ -27,7 +27,11 @@ async function pageMatches() {
 // Keep one dynamic content-script registration covering every site you've allowed.
 async function syncDynamicSites() {
   const { origins = [] } = await chrome.permissions.getAll();
-  const extra = origins.filter((o) => !STATIC_MATCHES.includes(o));
+  // Google access (granted for speaker notes) only puts us on Slides pages, never
+  // across all of Docs/Drive, and never on googleusercontent download hosts.
+  const extra = origins
+    .filter((o) => !STATIC_MATCHES.includes(o) && !o.includes('googleusercontent.com'))
+    .map((o) => (o === 'https://docs.google.com/*' ? 'https://docs.google.com/presentation/*' : o));
   const existing = await chrome.scripting.getRegisteredContentScripts({ ids: [DYNAMIC_SCRIPT_ID] });
   if (existing.length) await chrome.scripting.unregisterContentScripts({ ids: [DYNAMIC_SCRIPT_ID] });
   if (!extra.length) return;

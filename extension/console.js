@@ -165,10 +165,128 @@ async function renderTabs() {
   }
 }
 
+// ---------- Slides mode ----------
+// When the demo window's active tab is a Google Slides deck, the console swaps
+// the demo controls for that slide's speaker notes. Any other tab → Demo mode.
+
+const isSlidesUrl = (u) => /^https:\/\/docs\.google\.com\/presentation\//.test(u || '');
+let deck = null;
+let peek = false;
+const thumbs = new Map(); // pageId → blob URL (or null if unavailable)
+
+chrome.storage.local.get('deck').then(({ deck: d }) => {
+  deck = d || null;
+  renderSlides();
+});
+chrome.storage.onChanged.addListener((c, area) => {
+  if (area === 'local' && c.deck) {
+    deck = c.deck.newValue || null;
+    thumbs.clear();
+    renderSlides();
+  }
+});
+
+let notesScale = Number(localStorage.getItem('dd-notes-scale')) || 1;
+const applyScale = () => document.documentElement.style.setProperty('--notes-scale', String(notesScale));
+applyScale();
+const bump = (d) => {
+  notesScale = Math.min(2.5, Math.max(0.6, +(notesScale + d).toFixed(2)));
+  try { localStorage.setItem('dd-notes-scale', String(notesScale)); } catch {}
+  applyScale();
+};
+
+async function activeDemoTab() {
+  try {
+    const win = await chrome.windows.getLastFocused({ windowTypes: ['normal'] });
+    const [tab] = await chrome.tabs.query({ windowId: win.id, active: true });
+    return tab || null;
+  } catch {
+    return null;
+  }
+}
+
+async function thumbInto(el, pageId) {
+  el.replaceChildren();
+  if (!deck?.id || !pageId) {
+    el.textContent = 'No preview';
+    return;
+  }
+  if (!thumbs.has(pageId)) {
+    el.textContent = 'Loading…';
+    const has = await chrome.permissions.contains({ origins: DDDeck.GOOGLE_ORIGINS });
+    thumbs.set(pageId, has ? await DDDeck.fetchThumb(deck.id, pageId) : null);
+  }
+  const src = thumbs.get(pageId);
+  el.replaceChildren();
+  if (!src) return void (el.textContent = 'Preview unavailable');
+  const img = new Image();
+  img.src = src;
+  img.alt = '';
+  el.append(img);
+}
+
+async function renderSlides() {
+  const tab = await activeDemoTab();
+  const slidesTab = isSlidesUrl(tab?.url);
+  const on = slidesTab && !peek;
+  $('#slidesView').hidden = !on;
+  $('#demoView').hidden = on;
+  $('#viewPill').textContent = slidesTab ? (peek ? 'SLIDES TAB · DEMO CONTROLS' : 'SLIDES MODE') : 'DEMO MODE';
+  $('#viewPill').classList.toggle('slides-on', slidesTab);
+  $('#peek').textContent = peek ? 'Back to notes' : 'Demo controls';
+  if (!slidesTab) peek = false;
+  if (!on) return;
+
+  const warn = $('#slWarn');
+  warn.replaceChildren();
+  const say = (t) => {
+    const d = document.createElement('div');
+    d.className = 'warn-box';
+    d.textContent = t;
+    warn.append(d);
+  };
+  if (!deck) {
+    $('#slNum').textContent = 'Slides';
+    $('#slTitle').textContent = '';
+    $('#slNotes').textContent = 'No notes loaded. Settings → Slides & speaker notes → Load notes.';
+    $('#slNotes').classList.add('empty');
+    $('#thNow').textContent = $('#thNext').textContent = '';
+    $('#thNextTitle').textContent = '';
+    return;
+  }
+  const tabDeck = DDDeck.deckIdFrom(tab.url);
+  if (deck.id && tabDeck && tabDeck !== deck.id && !tab.url.includes('/d/e/')) say('This tab is a different deck from the one whose notes are loaded.');
+
+  const where = DDDeck.slideFrom(tab.url);
+  let i = DDDeck.indexOf(deck, where);
+  if (i < 0 && !where) i = 0; // e.g. Present mode just started, before the URL names a slide
+  if (i < 0) say("Can't match this slide to the loaded notes. Reload notes if the deck changed.");
+  const cur = deck.slides[i];
+  const next = deck.slides[i + 1];
+  $('#slNum').textContent = i >= 0 ? `Slide ${i + 1} / ${deck.slides.length}` : `Slide ? / ${deck.slides.length}`;
+  $('#slTitle').textContent = cur?.title || '';
+  $('#slNotes').textContent = cur?.notes || 'No speaker notes on this slide.';
+  $('#slNotes').classList.toggle('empty', !cur?.notes);
+  thumbInto($('#thNow'), cur?.pageId);
+  if (next) thumbInto($('#thNext'), next.pageId);
+  else $('#thNext').textContent = 'End of deck';
+  $('#thNextTitle').textContent = next?.title || '';
+}
+
+$('#fontDown').onclick = () => bump(-0.1);
+$('#fontUp').onclick = () => bump(0.1);
+$('#peek').onclick = () => {
+  peek = !peek;
+  renderSlides();
+};
+
 let tabsTimer = 0;
 const refreshTabs = () => {
   clearTimeout(tabsTimer);
-  tabsTimer = setTimeout(renderTabs, 120);
+  tabsTimer = setTimeout(() => {
+    renderTabs();
+    renderSlides();
+  }, 120);
 };
 ['onActivated', 'onCreated', 'onRemoved', 'onMoved', 'onAttached', 'onDetached'].forEach((e) => chrome.tabs[e].addListener(refreshTabs));
 chrome.tabs.onUpdated.addListener((id, info) => (info.url || info.status === 'complete' || info.title) && refreshTabs());
