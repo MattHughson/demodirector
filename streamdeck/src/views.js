@@ -67,7 +67,9 @@ export const ACTIONS = {
       const titleOf = (n) => s.topics?.[n - 1]?.title || '';
       const iconOf = (n) => s.topics?.[n - 1]?.icon || 'star';
       if (mode === 'next' || mode === 'prev') {
-        const n = Math.max(1, Math.min(t.count || 10, (t.index || (mode === 'next' ? 0 : 2)) + (mode === 'next' ? 1 : -1)));
+        // After an auto-hide the next topic is already cued at t.index.
+        const step = mode === 'next' ? (t.cued ? 0 : 1) : -1;
+        const n = Math.max(1, Math.min(t.count || 10, (t.index || (mode === 'next' ? 0 : 2)) + step));
         return { icon: mode, top: mode === 'next' ? 'NEXT TOPIC' : 'PREV TOPIC', label: `Step ${n}`, sub: titleOf(n) };
       }
       if (mode === 'show') {
@@ -79,7 +81,7 @@ export const ACTIONS = {
       if (!t.index) return { icon: 'star', top: 'TOPIC', label: 'None yet', sub: 'press for step 1' };
       return t.shown
         ? { bg: COLORS.accent, icon: t.icon || 'star', top: 'ON AIR', label: `Step ${t.index}`, sub: t.title }
-        : { icon: t.icon || 'star', top: 'HIDDEN', label: `Step ${t.index}`, sub: t.title };
+        : { icon: t.icon || 'star', top: t.cued ? 'UP NEXT' : 'HIDDEN', label: `Step ${t.index}`, sub: t.title };
     },
     press(s, { mode = 'next', index = 1 }) {
       if (mode === 'prev') return { type: 'topic.prev' };

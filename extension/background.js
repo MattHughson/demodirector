@@ -11,7 +11,7 @@
 //   revealed: [veilId]  — a veil is ON unless listed here, so fresh = fully veiled
 //   mode:     'rehearse' | 'live'
 //   camera:   { on, blink, blinkStart, size: 's'|'m'|'l' }
-//   topic:    { index: 0-10, shown }
+//   topic:    { index: 0-10, shown, shownAt, cued } — cued: auto-hidden, index already moved to the next one
 //   slack:    { shown, at }
 
 // Built-in sites; any other demo site (e.g. the storefront) is added at runtime
@@ -57,11 +57,11 @@ const LIVE_DEFAULTS = {
   // size: 's' | 'm' | 'l' | <px>; pos: null (default top-right) or { corner: 'tl'|'tr'|'bl'|'br', x, y }
   // showAt: while in the future, the bubble is on but held hidden (segment arrival delay).
   camera: { on: false, blink: false, blinkStart: 0, size: 'm', pos: null, showAt: null },
-  topic: { index: 0, shown: false },
+  topic: { index: 0, shown: false, shownAt: 0, cued: false },
   slack: { shown: false, at: 0 },
   // Segments (demo tabs) timing: ms spent per segment id, the one on screen now, and the Live clock.
   segTime: {},
-  segCurrent: null, // { id, since }
+  segCurrent: null, // { id, since, tabId }
   liveStart: null,
 };
 
@@ -77,7 +77,8 @@ const CAMERA_DEFAULTS = {
   background: { mode: 'none', color: '#0b0f17' }, // none | color | blur (MediaPipe, local)
 };
 
-const LOWER_THIRD_DEFAULTS = { offsetLeft: 32, offsetBottom: 48, scale: 1, accent: '#f79009' };
+// autoHide: seconds a topic stays up before it hides and the next one is cued (0 = stays up).
+const LOWER_THIRD_DEFAULTS = { offsetLeft: 32, offsetBottom: 48, scale: 1, accent: '#f79009', autoHide: 5 };
 
 // ---------- defaults (bundled JSON files, editable without touching code) ----------
 
@@ -244,13 +245,19 @@ async function trackSegmentNow() {
   const s = await loadState();
   const win = await demoWindow();
   const [active] = win ? await chrome.tabs.query({ windowId: win.id, active: true }) : [];
+  // Once you're in a segment, its tab stays that segment however its URL changes
+  // (clicking around, redirects, another origin): only switching tabs moves on.
+  if (active && s.segCurrent?.tabId === active.id) return { ok: true, unchanged: true };
   const seg = active ? await segmentForTab(active.id) : null;
   const curId = s.segCurrent?.id || null;
-  if ((seg?.id || null) === curId) return { ok: true, unchanged: true };
+  if ((seg?.id || null) === curId) {
+    if (seg && s.segCurrent.tabId !== active.id) await saveLive({ segCurrent: { ...s.segCurrent, tabId: active.id } });
+    return { ok: true, unchanged: true };
+  }
   const now = Date.now();
   const segTime = { ...s.segTime };
   if (curId) segTime[curId] = (segTime[curId] || 0) + Math.max(0, now - s.segCurrent.since);
-  const patch = { segTime, segCurrent: seg ? { id: seg.id, since: now } : null };
+  const patch = { segTime, segCurrent: seg ? { id: seg.id, since: now, tabId: active.id } : null };
   if (seg) patch.camera = cameraForSegment(s.camera, seg.camera);
   await saveLive(patch);
   return { ok: true, segment: seg?.id || null };
@@ -485,7 +492,7 @@ const handlers = {
     await saveLive({
       revealed: [],
       slack: { shown: false, at: 0 },
-      topic: { ...topic, shown: false },
+      topic: { ...topic, shown: false, cued: false },
       segTime: {},
       segCurrent: null,
       liveStart: mode === 'live' ? Date.now() : null,
@@ -606,9 +613,10 @@ const handlers = {
     const corner = ['tl', 'tr', 'bl', 'br'].includes(pos?.corner) ? pos.corner : 'tr';
     const clean = { corner, x: Math.max(0, Math.round(pos?.x || 0)), y: Math.max(0, Math.round(pos?.y || 0)) };
     const px = Math.max(80, Math.min(900, Math.round(Number(size) || 240)));
-    const { camera, settings } = await loadState();
+    const { camera, settings, segCurrent } = await loadState();
     await saveLive({ camera: { ...camera, pos: clean, size: px } });
-    const seg = tabId ? await segmentForTab(tabId) : null;
+    // The segment you're in owns this tab even after its URL has wandered off.
+    const seg = !tabId ? null : segCurrent?.tabId === tabId ? segCurrent : await segmentForTab(tabId);
     if (seg) {
       const tabs = settings.tabs.map((t) => (segId(t) === seg.id ? { ...t, camera: { ...(t.camera || {}), pos: clean, size: px } } : t));
       await handlers['settings.update']({ patch: { tabs } });
@@ -630,13 +638,26 @@ const handlers = {
   async 'topic.show'({ index }) {
     const { settings } = await loadState();
     const n = Math.max(1, Math.min(settings.topics.length, Number(index) || 1));
-    await saveLive({ topic: { index: n, shown: true } });
+    const shownAt = Date.now();
+    await saveLive({ topic: { index: n, shown: true, shownAt, cued: false } });
+    const secs = Math.max(0, Math.min(600, Number(settings.lowerThird.autoHide) || 0));
+    if (secs) setTimeout(() => dispatch({ type: 'topic.autohide', shownAt }), secs * 1000);
     return { ok: true, index: n };
+  },
+
+  // The topic's time is up: hide it and cue the next one, so the Deck's toggle /
+  // next key shows it with one press. Ignored if another topic was shown since.
+  async 'topic.autohide'({ shownAt }) {
+    const { topic, settings } = await loadState();
+    if (!topic.shown || topic.shownAt !== shownAt) return { ok: true, stale: true };
+    const last = topic.index >= settings.topics.length;
+    await saveLive({ topic: { ...topic, shown: false, index: last ? topic.index : topic.index + 1, cued: !last } });
+    return { ok: true };
   },
 
   async 'topic.hide'() {
     const { topic } = await loadState();
-    await saveLive({ topic: { ...topic, shown: false } });
+    await saveLive({ topic: { ...topic, shown: false, cued: false } });
     return { ok: true };
   },
 
@@ -648,7 +669,8 @@ const handlers = {
 
   async 'topic.next'() {
     const { topic } = await loadState();
-    return handlers['topic.show']({ index: (topic.index || 0) + 1 });
+    // A cued topic is already the next one.
+    return handlers['topic.show']({ index: topic.cued ? topic.index : (topic.index || 0) + 1 });
   },
 
   async 'topic.prev'() {

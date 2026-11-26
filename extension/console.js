@@ -98,7 +98,7 @@ function renderTopics({ topic, settings }) {
   const now = $('#now');
   now.classList.toggle('on', topic.shown);
   now.innerHTML = `<span class="ico">${DDIcons.svg(t?.icon || 'star', 24)}</span><span><div class="k"></div><div class="t"></div></span>`;
-  now.querySelector('.k').textContent = t ? `Step ${topic.index} · ${topic.shown ? 'on screen' : 'hidden'}` : 'No topic yet';
+  now.querySelector('.k').textContent = t ? `Step ${topic.index} · ${topic.shown ? 'on screen' : topic.cued ? 'up next' : 'hidden'}` : 'No topic yet';
   now.querySelector('.t').textContent = t ? t.title : 'Press Next to show Step 1';
 
   const list = $('#topics');
@@ -107,9 +107,9 @@ function renderTopics({ topic, settings }) {
     const n = i + 1;
     const b = document.createElement('button');
     b.className = 'topic';
-    if (n === topic.index) b.classList.add('current');
+    if (n === topic.index && !topic.cued) b.classList.add('current');
     if (n === topic.index && topic.shown) b.classList.add('on');
-    if (n === (topic.index || 0) + 1) b.classList.add('next');
+    if (n === (topic.cued ? topic.index : (topic.index || 0) + 1)) b.classList.add('next');
     b.innerHTML = `<span class="n">${n}</span>${DDIcons.svg(x.icon, 18)}<span class="ti"></span>`;
     b.querySelector('.ti').textContent = x.title;
     b.append(kbd(`topic-${n}`));
