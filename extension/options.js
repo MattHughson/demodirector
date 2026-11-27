@@ -388,11 +388,44 @@ function renderTabs(state) {
   }
   const total = list.reduce((a, t) => a + (Number(t.minutes) || 0), 0);
   $('#segTotal').textContent = total ? `Planned total: ${fmtMin(total)}` : '';
+  // Pause entries split the list into arcs; each shows its arc's planned time.
+  let segNo = 0;
+  let arcNo = 1;
+  let arcMin = 0;
+  let planTo = 0;
   list.forEach((t, i) => {
+    if (t.kind === 'pause') {
+      const row = document.createElement('div');
+      row.className = 'pausecard';
+      row.innerHTML = `<span class="pi">⏸</span><input type="text" name="plabel" placeholder="Pause" aria-label="Pause name">
+        <span class="muted"></span>
+        <span class="ops"><button data-d="-1" title="Move up">▲</button><button data-d="1" title="Move down">▼</button><button class="danger" data-x title="Remove">✕</button></span>`;
+      planTo += arcMin;
+      row.querySelector('.muted').textContent = `End of arc ${arcNo}${arcMin ? ` · arc planned ${fmtMin(arcMin)} · ${fmtMin(planTo)} in total` : ''}. Moving past it pauses the show clock.`;
+      arcNo++;
+      arcMin = 0;
+      const pl = row.querySelector('input');
+      pl.value = t.label || '';
+      pl.onchange = () => saveTabs(current.settings.tabs.map((x, k) => (k !== i ? x : { ...x, label: pl.value.trim() })));
+      row.querySelectorAll('[data-d]').forEach((b) => {
+        b.onclick = () => {
+          const next = [...current.settings.tabs];
+          const j = i + Number(b.dataset.d);
+          if (j < 0 || j >= next.length) return;
+          [next[i], next[j]] = [next[j], next[i]];
+          saveTabs(next);
+        };
+      });
+      row.querySelector('[data-x]').onclick = () => saveTabs(current.settings.tabs.filter((_, k) => k !== i));
+      root.append(row);
+      return;
+    }
+    segNo++;
+    arcMin += Number(t.minutes) || 0;
     const card = document.createElement('div');
     card.className = 'seg';
     card.innerHTML = `
-      <div class="tabrow"><span class="n">${i + 1}</span>
+      <div class="tabrow"><span class="n">${segNo}</span>
         <input type="text" name="label" placeholder="Label, e.g. Studio" aria-label="Label">
         <input type="text" name="url" placeholder="https://…" aria-label="URL" spellcheck="false">
         <span class="ops"><button class="primary" data-allow hidden title="Let Demo Director run on this site">Allow</button><button data-d="-1" title="Move up">▲</button><button data-d="1" title="Move down">▼</button><button class="danger" data-x title="Remove">✕</button></span>
@@ -472,7 +505,7 @@ function renderTabs(state) {
     });
     $c('[data-tadd]').onclick = () => {
       // Suggest the next topic number after the last one used anywhere before it, and a time after the last one here.
-      const used = list.slice(0, i + 1).flatMap((x) => (x.topics || []).map((y) => y.n));
+      const used = list.slice(0, i + 1).flatMap((x) => (x.topics || []).map((y) => y.n)).filter(Number.isFinite);
       const n = Math.min(state.settings.topics.length, (used.length ? Math.max(...used) : 0) + 1);
       const lastAt = planned.at(-1)?.at;
       saveTopics([...planned, { n, at: Number.isFinite(lastAt) ? lastAt + 60 : null }]);
@@ -536,6 +569,7 @@ function renderTabs(state) {
   });
 }
 
+$('#pauseAdd').onclick = () => saveTabs([...current.settings.tabs, { kind: 'pause', label: '' }]);
 $('#tabAdd').onclick = async () => {
   await saveTabs([...current.settings.tabs, { label: '', url: '' }]);
   setTimeout(() => [...document.querySelectorAll('#tabs [name=label]')].pop()?.focus(), 100);

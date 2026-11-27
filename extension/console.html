@@ -131,6 +131,15 @@
     .clock { font: 800 18px ui-monospace, SFMono-Regular, Menlo, monospace; padding: 6px 12px; border-radius: 10px; background: var(--card2); font-variant-numeric: tabular-nums; }
     .clock { border: 1px solid var(--line); color: var(--text); cursor: pointer; }
     .clock.off { font: 700 14px -apple-system, system-ui, sans-serif; background: var(--accent); border-color: var(--accent); color: #fff; }
+    .clock.paused { border-color: var(--warn); color: var(--warn); }
+    .clockrs { padding: 6px 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--card2); color: var(--muted); font-weight: 700; cursor: pointer; }
+    .clockrs.confirm { border-color: var(--warn); color: var(--warn); }
+    .pausebox { display: flex; gap: 14px; align-items: baseline; flex-wrap: wrap; padding: 10px 14px; border-radius: 12px; border: 1px solid var(--warn); background: rgba(253,176,34,.08); }
+    .pausebox .pt { font-weight: 800; color: var(--warn); }
+    .pausebox .big { font: 800 28px ui-monospace, SFMono-Regular, Menlo, monospace; font-variant-numeric: tabular-nums; }
+    .pausebox .pp { color: var(--muted); }
+    .pausebox.behind .pp { color: var(--live, #f04438); font-weight: 700; }
+    .pauserow { padding: 6px 10px; border-radius: 10px; border: 1px dashed var(--warn); color: var(--warn); font-size: 13px; font-weight: 600; }
     .clock.confirm { font: 700 14px -apple-system, system-ui, sans-serif; border-color: var(--warn); color: var(--warn); }
     .nowseg { grid-column: 1 / -1; background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 14px 16px; display: grid; gap: 10px; }
     .nowseg.on { border-color: var(--accent); }
@@ -183,7 +192,7 @@
     <button class="mode" id="mode" title="Switch Rehearse / Live"><span class="dot"></span><span id="modeText">REHEARSE</span></button>
     <kbd data-cmd="toggle-mode"></kbd>
     <span class="modepill" id="viewPill">DEMO MODE</span>
-    <button class="clock" id="clock" title="Show clock. Start it when the meeting really begins: it zeroes the segment timers too."></button><kbd data-cmd="clock-start"></kbd>
+    <button class="clock" id="clock"></button><button class="clockrs" id="clockRestart" hidden title="Restart the show clock from 0:00 (click twice)">↺</button><kbd data-cmd="clock-start"></kbd>
     <span class="spacer"></span>
     <span class="conn" id="conn" title="Stream Deck plugin arrives in phase 4"><i></i><span>Stream Deck: not connected</span></span>
     <button class="reset" id="reset">Reset demo <kbd data-cmd="reset"></kbd></button>
@@ -224,6 +233,7 @@
         <div><div class="k" id="nsKicker"></div><div class="t" id="nsLabel"></div></div>
         <div class="timer"><span class="big" id="nsTime"></span><div class="bar"><i id="nsBar"></i></div></div>
       </div>
+      <div class="pausebox" id="pauseBox" hidden><span class="pt" id="pbTitle"></span><span class="big" id="pbTime"></span><span class="pp" id="pbPlan"></span><span class="pp">· press the clock to resume</span></div>
       <div class="segtopics" id="nsTopics"></div>
       <div class="segnotes" id="nsNotes"></div>
     </section>

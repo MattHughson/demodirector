@@ -62,8 +62,13 @@ const LIVE_DEFAULTS = {
   slack: { shown: false, at: 0 },
   // Segments (demo tabs) timing: ms spent per segment id, the one on screen now, and the Live clock.
   segTime: {},
-  segCurrent: null, // { id, since, tabId }
+  segCurrent: null, // { id, since, tabId, paused } — paused: the show clock is paused, so this segment isn't counting
+  segLast: null, // the segment you were last on (to spot an arc break across a detour to another tab)
+  // Show clock: started at liveStart; paused since clockPausedAt (null = running), clockPausedMs = time spent paused so far.
   liveStart: null,
+  clockPausedAt: null,
+  clockPausedMs: 0,
+  arcBreak: null, // id of the pause entry that auto-paused the clock
 };
 
 const CAMERA_DEFAULTS = {
@@ -111,7 +116,12 @@ function merge(base, over) {
 
 // A tab "is" a demo tab if it's on the same origin and at or below the
 // configured path, so /structure/drops still matches after you click around.
+// Google Slides: the same deck whatever the view (/edit, /present, /preview…).
+const slidesDeck = (u) => /^https:\/\/docs\.google\.com\/presentation\/d\/(?:e\/)?([\w-]{20,})/.exec(u || '')?.[1] || null;
+
 function tabMatches(tabUrl, cfgUrl) {
+  const deck = slidesDeck(cfgUrl);
+  if (deck) return slidesDeck(tabUrl) === deck;
   try {
     const t = new URL(tabUrl);
     const c = new URL(cfgUrl);
@@ -236,18 +246,41 @@ async function rebuildTabs() {
   return { ok: true, opened: pairs.filter((p) => !p.tab).length, closed: extra.length };
 }
 
+// Where you are in the run of show: the segment being tracked (it keeps its
+// tab however that tab's URL has wandered), else whichever segment is on screen.
+function currentIndex(s, pairs) {
+  const k = s.segCurrent ? pairs.findIndex((p) => segId(p) === s.segCurrent.id) : -1;
+  return k >= 0 ? k : pairs.findIndex(onScreen);
+}
+
+// The tab a segment is in right now: the tracked one for the current segment.
+const tabFor = (s, p, tabs) => (s.segCurrent?.id === segId(p) && tabs.find((t) => t.id === s.segCurrent.tabId)) || p.tab;
+
+async function goToSegment(s, p, tabs, winId) {
+  const tab = tabFor(s, p, tabs);
+  if (tab) await chrome.tabs.update(tab.id, { active: true });
+  else await chrome.tabs.create({ windowId: winId, url: p.url, active: true }); // closed or never opened
+}
+
+// Next / previous segment, in run-of-show order. Stops at the ends (no wrapping
+// back to the start), and opens the segment's tab if it isn't open.
 async function stepTab(delta) {
-  const { settings } = await loadState();
+  const s = await loadState();
   const win = await demoWindow();
   if (!win) return { ok: false };
   const tabs = await chrome.tabs.query({ windowId: win.id });
-  // Cycle through the demo tabs if any are configured and open; otherwise all tabs.
-  let ring = pairTabs(configuredTabs(settings), tabs).filter((p) => p.tab);
-  if (!ring.length) ring = tabs.map((tab) => ({ tab }));
-  if (!ring.length) return { ok: false };
-  const i = ring.findIndex(onScreen);
-  const next = ring[(i + delta + ring.length) % ring.length];
-  await chrome.tabs.update(next.tab.id, { active: true });
+  const pairs = pairTabs(configuredTabs(s.settings), tabs);
+  if (!pairs.length) {
+    // No segments set up: cycle the window's tabs.
+    if (!tabs.length) return { ok: false };
+    const i = tabs.findIndex((t) => t.active);
+    await chrome.tabs.update(tabs[(i + delta + tabs.length) % tabs.length].id, { active: true });
+    return { ok: true };
+  }
+  const at = currentIndex(s, pairs);
+  const j = at < 0 ? (delta > 0 ? 0 : pairs.length - 1) : at + delta;
+  if (j < 0 || j >= pairs.length) return { ok: false, error: delta > 0 ? 'Already on the last segment' : 'Already on the first segment' };
+  await goToSegment(s, pairs[j], tabs, win.id);
   return { ok: true };
 }
 
@@ -291,6 +324,46 @@ function trackSegment() {
   trackQueued = setTimeout(() => dispatch({ type: 'segment.track' }), 80);
 }
 
+// ---------- arcs: pause entries split the run of show ----------
+
+const isPause = (t) => t?.kind === 'pause';
+
+// Add the running segment's time to its total (when leaving it, or pausing).
+function foldSeg(s, now) {
+  const segTime = { ...s.segTime };
+  const c = s.segCurrent;
+  if (c && !c.paused) segTime[c.id] = (segTime[c.id] || 0) + Math.max(0, now - c.since);
+  return segTime;
+}
+
+// The first pause entry between two segments, going forward only.
+function pauseBetween(settings, fromId, toId) {
+  const list = settings.tabs;
+  const i = list.findIndex((t) => !isPause(t) && segId(t) === fromId);
+  const j = list.findIndex((t) => !isPause(t) && segId(t) === toId);
+  if (i < 0 || j <= i) return null;
+  return list.slice(i + 1, j).find(isPause) || null;
+}
+
+// Arcs, in order: the segments between pause entries, with their planned minutes.
+// Each pause entry closes the arc before it.
+function arcsOf(settings) {
+  const arcs = [{ ids: [], minutes: 0, pauseId: null }];
+  for (const t of settings.tabs) {
+    const a = arcs.at(-1);
+    if (isPause(t)) {
+      a.pauseId = t.id;
+      a.label = t.label || '';
+      arcs.push({ ids: [], minutes: 0, pauseId: null });
+    } else if (/^https?:\/\/\S+$/.test(t.url || '')) {
+      a.ids.push(segId(t));
+      a.minutes += Number(t.minutes) || 0;
+    }
+  }
+  if (!arcs.at(-1).ids.length && arcs.length > 1) arcs.pop();
+  return arcs;
+}
+
 async function trackSegmentNow() {
   const s = await loadState();
   const win = await demoWindow();
@@ -313,9 +386,12 @@ async function trackSegmentNow() {
     return { ok: true, unchanged: true };
   }
   const now = Date.now();
-  const segTime = { ...s.segTime };
-  if (curId) segTime[curId] = (segTime[curId] || 0) + Math.max(0, now - s.segCurrent.since);
-  const patch = { segTime, segCurrent: seg ? { id: seg.id, since: now, tabId: active.id } : null };
+  const patch = { segTime: foldSeg(s, now), segCurrent: seg ? { id: seg.id, since: now, tabId: active.id, paused: !!s.clockPausedAt } : null };
+  if (!seg && curId) patch.segLast = curId;
+  // Moving forward past a pause entry (the end of an arc) pauses the show clock.
+  const brk = seg && s.liveStart && !s.clockPausedAt ? pauseBetween(s.settings, curId || s.segLast, seg.id) : null;
+  if (brk) Object.assign(patch, { clockPausedAt: now, arcBreak: brk.id, segCurrent: { ...patch.segCurrent, paused: true } });
+  if (seg) patch.segLast = null;
   if (seg) patch.camera = cameraForSegment(s.camera, seg.camera);
   await saveLive(patch);
   return { ok: true, segment: seg?.id || null };
@@ -417,6 +493,10 @@ async function loadState() {
     segTime: live.segTime || {},
     segCurrent: live.segCurrent || null,
     liveStart: live.liveStart || null,
+    clockPausedAt: live.clockPausedAt || null,
+    clockPausedMs: live.clockPausedMs || 0,
+    arcBreak: live.arcBreak || null,
+    segLast: live.segLast || null,
     bridge: { connected: bridgeUp },
     settings,
   };
@@ -472,7 +552,7 @@ function normaliseVeil(v, veils) {
 const handlers = {
   async 'state.get'() {
     const s = await loadState();
-    return { ...s, quietTabs: await quietTabs(s.settings) };
+    return { ...s, quietTabs: await quietTabs(s.settings), arcs: arcsOf(s.settings), arcBreakInfo: arcBreakInfo(s) };
   },
 
   // A content script asking which tab it is (filled in from the sender).
@@ -562,6 +642,10 @@ const handlers = {
       segTime: {},
       segCurrent: null,
       liveStart: null, // the show clock waits for Start clock
+      clockPausedAt: null,
+      clockPausedMs: 0,
+      arcBreak: null,
+      segLast: null,
     });
     const tabs = settings.resetTabs && configuredTabs(settings).length ? await rebuildTabs() : null;
     trackSegment(); // start timing whichever segment is on screen now
@@ -605,15 +689,16 @@ const handlers = {
     const active = tabs.find((t) => t.active);
     if (!active) return { ok: false, error: 'No tab on screen' };
     if (tabs.length < 2) return { ok: false, error: "That's the last tab in the window" };
-    const { settings } = await loadState();
-    const ring = pairTabs(configuredTabs(settings), tabs).filter((p) => p.tab);
-    const i = ring.findIndex((p) => owns(p, active.id));
-    // A split segment closes both panes; any other split closes just the one on screen.
-    const close = i >= 0 && ring[i].split ? [ring[i].tab.id, ring[i].side.id] : [active.id];
+    const s = await loadState();
+    const pairs = pairTabs(configuredTabs(s.settings), tabs);
+    const i = currentIndex(s, pairs);
+    const cur = pairs[i];
+    // A split segment closes both panes; anything else just the tab on screen.
+    const close = cur?.split && owns(cur, active.id) ? [cur.tab.id, cur.side.id] : [active.id];
     if (tabs.length <= close.length) return { ok: false, error: "That's the last tab in the window" };
-    // Next open segment after this one; from a non-segment tab, the first open segment.
-    const next = (i < 0 ? ring : ring.slice(i + 1)).find((p) => !close.includes(p.tab.id));
-    if (next) await chrome.tabs.update(next.tab.id, { active: true });
+    // Then the next segment in the run of show (opened if need be); from a non-segment tab, the first open one.
+    const next = i >= 0 ? pairs[i + 1] : pairs.find((p) => p.tab && !close.includes(p.tab.id));
+    if (next) await goToSegment(s, next, tabs, win.id);
     await chrome.tabs.remove(close);
     return { ok: true, next: next?.label || null };
   },
@@ -651,11 +736,43 @@ const handlers = {
     const now = Date.now();
     await saveLive({
       liveStart: now,
+      clockPausedAt: null,
+      clockPausedMs: 0,
+      arcBreak: null,
       segTime: {},
-      segCurrent: segCurrent ? { ...segCurrent, since: now } : null,
+      segCurrent: segCurrent ? { ...segCurrent, since: now, paused: false } : null,
       topic: { ...topic, done: {} },
     });
     return { ok: true };
+  },
+
+  // Pause: the show clock and the segment timer stop, so the total so far holds still.
+  async 'clock.pause'() {
+    const s = await loadState();
+    if (!s.liveStart || s.clockPausedAt) return { ok: true, unchanged: true };
+    const now = Date.now();
+    await saveLive({ clockPausedAt: now, segTime: foldSeg(s, now), segCurrent: s.segCurrent && { ...s.segCurrent, paused: true } });
+    return { ok: true };
+  },
+
+  async 'clock.resume'() {
+    const s = await loadState();
+    if (!s.clockPausedAt) return { ok: true, unchanged: true };
+    const now = Date.now();
+    await saveLive({
+      clockPausedAt: null,
+      clockPausedMs: s.clockPausedMs + (now - s.clockPausedAt),
+      arcBreak: null,
+      segCurrent: s.segCurrent && { ...s.segCurrent, since: now, paused: false },
+    });
+    return { ok: true };
+  },
+
+  // Not started → start; running → pause; paused → resume.
+  async 'clock.toggle'() {
+    const s = await loadState();
+    if (!s.liveStart) return handlers['clock.start']();
+    return handlers[s.clockPausedAt ? 'clock.resume' : 'clock.pause']();
   },
 
   async 'mode.toggle'() {
@@ -904,6 +1021,15 @@ function segTopics(seg, count) {
     .filter((x) => Number.isInteger(x.n) && x.n >= 1 && x.n <= count);
 }
 
+// After an auto-pause: which arc just ended and the plan up to there (minutes, cumulative).
+function arcBreakInfo(s) {
+  if (!s.arcBreak) return null;
+  const arcs = arcsOf(s.settings);
+  const k = arcs.findIndex((a) => a.pauseId === s.arcBreak);
+  if (k < 0) return null;
+  return { arc: k + 1, label: arcs[k].label, planTo: arcs.slice(0, k + 1).reduce((n, a) => n + a.minutes, 0) };
+}
+
 function bridgeSlim(s) {
   const t = s.settings.topics[s.topic.index - 1];
   return {
@@ -923,6 +1049,9 @@ function bridgeSlim(s) {
     segTime: s.segTime,
     segCurrent: s.segCurrent,
     liveStart: s.liveStart,
+    clockPausedAt: s.clockPausedAt,
+    clockPausedMs: s.clockPausedMs,
+    arcBreak: arcBreakInfo(s),
   };
 }
 
@@ -988,7 +1117,7 @@ chrome.alarms.onAlarm.addListener((a) => a.name === 'dd-bridge' && bridgeConnect
 
 async function broadcast() {
   const state = await loadState();
-  const msg = { type: 'state', state: { ...state, quietTabs: await quietTabs(state.settings) } };
+  const msg = { type: 'state', state: { ...state, quietTabs: await quietTabs(state.settings), arcs: arcsOf(state.settings), arcBreakInfo: arcBreakInfo(state) } };
   const tabs = await chrome.tabs.query({ url: await pageMatches() });
   await Promise.all(tabs.map((t) => chrome.tabs.sendMessage(t.id, msg).catch(() => {})));
   chrome.runtime.sendMessage(msg).catch(() => {}); // popup / options, if open
@@ -1014,7 +1143,7 @@ async function updateBadge(state) {
   });
 }
 
-const SESSION_KEYS = ['revealed', 'mode', 'camera', 'topic', 'slack', 'segTime', 'segCurrent', 'liveStart'];
+const SESSION_KEYS = ['revealed', 'mode', 'camera', 'topic', 'slack', 'segTime', 'segCurrent', 'liveStart', 'clockPausedAt', 'clockPausedMs', 'arcBreak', 'segLast'];
 chrome.storage.onChanged.addListener((changes, area) => {
   const keys = Object.keys(changes);
   if (area === 'local' && keys.includes('settings')) {
@@ -1053,7 +1182,7 @@ const COMMANDS = {
   'slide-prev': { type: 'slide.prev' },
   'tab-prev': { type: 'tab.prev' },
   'tab-close': { type: 'tab.close' },
-  'clock-start': { type: 'clock.start' },
+  'clock-start': { type: 'clock.toggle' },
 };
 
 chrome.commands.onCommand.addListener((command, tab) => {

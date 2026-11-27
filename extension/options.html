@@ -60,6 +60,9 @@
     .segopts .campos { font-size: 12px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
     .segopts .campos button { padding: 3px 8px; font-size: 12px; }
     .seg .notes { padding-left: 32px; }
+    .pausecard { display: grid; grid-template-columns: 24px 180px 1fr auto; gap: 8px; align-items: center; padding: 8px 10px; border: 1px dashed var(--warn, #b54708); border-radius: 10px; font-size: 12px; }
+    .pausecard .pi { text-align: center; font-size: 16px; }
+    .pausecard .ops button { padding: 3px 8px; }
     .segtopics { display: grid; gap: 6px; padding-left: 32px; font-size: 12px; font-weight: 600; color: var(--muted); justify-items: start; }
     .segtopics em { font-style: normal; font-weight: 400; }
     .segtopics .list { display: grid; gap: 6px; justify-self: stretch; }
@@ -120,6 +123,7 @@
       <div class="tabs" id="tabs"></div>
       <div class="bar">
         <button id="tabAdd">+ Add segment</button>
+        <button id="pauseAdd" title="Mark the end of an arc: moving past it pauses the show clock so you can check your pace">+ Add pause</button>
         <button id="tabCapture" title="Replace the list with the web tabs open in your last-used window">Use tabs from my window</button>
         <button id="tabRebuild">Rebuild tabs now</button>
       </div>

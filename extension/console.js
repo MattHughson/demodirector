@@ -179,7 +179,7 @@ const validSeg = (t) => /^https?:\/\/\S+$/.test(t.url || '');
 function spent(id) {
   if (!state) return 0;
   const cur = state.segCurrent;
-  return (state.segTime[id] || 0) + (cur?.id === id ? Date.now() - cur.since : 0);
+  return (state.segTime[id] || 0) + (cur?.id === id && !cur.paused ? Date.now() - cur.since : 0);
 }
 // '' | 'warnt' (≥ 80% of budget) | 'overt' (over budget)
 function pace(id, minutes) {
@@ -223,25 +223,54 @@ function renderSegTopics(seg) {
   });
 }
 
-// Start clock: one click when stopped; once running, a second click within 3s restarts it.
-let clockArmed = 0;
-$('#clock').onclick = () => {
-  if (!state?.liveStart || clockArmed) {
-    clearTimeout(clockArmed);
-    clockArmed = 0;
+// Show clock: click to start, then to pause / resume. ↺ restarts (click twice within 3s).
+const showTime = () => (state?.liveStart ? (state.clockPausedAt || Date.now()) - state.liveStart - (state.clockPausedMs || 0) : 0);
+$('#clock').onclick = () => send({ type: 'clock.toggle' });
+let restartArmed = 0;
+$('#clockRestart').onclick = () => {
+  if (restartArmed) {
+    clearTimeout(restartArmed);
+    restartArmed = 0;
     send({ type: 'clock.start' });
   } else {
-    clockArmed = setTimeout(() => ((clockArmed = 0), renderTimers()), 3000);
+    restartArmed = setTimeout(() => ((restartArmed = 0), renderTimers()), 3000);
   }
   renderTimers();
 };
 
+// Planned minutes up to and including segment index i (of the valid segments).
+const planTo = (segs, i) => segs.slice(0, i + 1).reduce((n, t) => n + (Number(t.minutes) || 0), 0) * 60000;
+
+// While paused: total so far against the plan, so you can see if you're on pace.
+function renderPause(segs, i) {
+  const box = $('#pauseBox');
+  const paused = !!(state.liveStart && state.clockPausedAt);
+  box.hidden = !paused;
+  if (!paused) return;
+  const brk = state.arcBreakInfo;
+  const t = showTime();
+  const plan = brk ? brk.planTo * 60000 : i >= 0 ? planTo(segs, i) : 0;
+  const diff = t - plan;
+  $('#pbTitle').textContent = brk ? `⏸ End of arc ${brk.arc}${brk.label && brk.label !== 'Pause' ? ` · ${brk.label}` : ''}` : '⏸ Paused';
+  $('#pbTime').textContent = fmt(t);
+  $('#pbPlan').textContent = plan
+    ? `planned ${fmt(plan)} · ${Math.abs(diff) < 15000 ? 'right on time' : diff > 0 ? `${fmt(diff)} behind` : `${fmt(-diff)} ahead`}`
+    : 'no time budgets set';
+  box.classList.toggle('behind', !!plan && diff >= 15000);
+}
+
 function renderTimers() {
   if (!state) return;
   const clock = $('#clock');
+  const paused = !!(state.liveStart && state.clockPausedAt);
   clock.classList.toggle('off', !state.liveStart);
-  clock.classList.toggle('confirm', !!clockArmed);
-  clock.textContent = clockArmed ? 'Restart from 0:00? Click again' : state.liveStart ? `⏱ ${fmt(Date.now() - state.liveStart)}` : '▶ Start clock';
+  clock.classList.toggle('paused', paused);
+  clock.textContent = !state.liveStart ? '▶ Start clock' : `${paused ? '⏸' : '⏱'} ${fmt(showTime())}`;
+  clock.title = !state.liveStart ? 'Start the show clock when the meeting really begins (zeroes the segment timers)' : paused ? 'Paused: click to resume' : 'Click to pause';
+  const rs = $('#clockRestart');
+  rs.hidden = !state.liveStart;
+  rs.classList.toggle('confirm', !!restartArmed);
+  rs.textContent = restartArmed ? 'Restart from 0:00?' : '↺';
 
   const segs = state.settings.tabs.filter(validSeg);
   const i = segs.findIndex((t) => segKey(t) === state.segCurrent?.id);
@@ -275,6 +304,7 @@ function renderTimers() {
     $('#nsNotes').classList.toggle('empty', DDRich.isEmpty(seg.notes));
   }
   renderSegTopics(seg);
+  renderPause(segs, i);
   // Slides mode: the deck segment's timer next to the slide number
   const st = $('#slSegTime');
   st.className = `segt ${seg ? pace(segKey(seg), seg.minutes) : ''}`;
@@ -307,7 +337,18 @@ async function renderTabs() {
   const show = at < 0 ? [0] : [at, at + 1].filter((k) => k < st.tabs.length);
   const left = st.tabs.length - 1 - (at < 0 ? 0 : at + 1);
   $('#runCount').textContent = at < 0 ? `${st.tabs.length} segments` : `${at + 1} / ${st.tabs.length}${left > 0 ? ` · ${left} more after` : ''}`;
+  // A pause entry between where you are and the next segment (the end of an arc).
+  const all = state?.settings.tabs || [];
+  const posOf = (id) => all.findIndex((x) => x.kind !== 'pause' && (x.id || `u:${x.url}`) === id);
+  const brk = at >= 0 && show.length > 1 ? all.slice(posOf(st.tabs[at].id) + 1, posOf(st.tabs[at + 1].id)).find((x) => x.kind === 'pause') : null;
   show.forEach((i, k) => {
+    if (k === 1 && brk) {
+      const p = document.createElement('div');
+      p.className = 'pauserow';
+      const n = (state.arcs || []).findIndex((a) => a.pauseId === brk.id) + 1;
+      p.textContent = `⏸ ${brk.label || 'Pause'}${n ? ` · end of arc ${n}` : ''}: the clock pauses when you move on`;
+      root.append(p);
+    }
     const t = st.tabs[i];
     const b = document.createElement('button');
     b.className = `tabi${t.active ? ' active' : ''}${t.open ? '' : ' missing'}`;

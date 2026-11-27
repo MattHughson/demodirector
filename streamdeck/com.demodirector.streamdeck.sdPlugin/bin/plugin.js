@@ -17594,7 +17594,7 @@ function blinkPhase(camera, now) {
 }
 function segSpent(s, id, now) {
   const cur = s.segCurrent;
-  return (s.segTime?.[id] || 0) + (cur?.id === id ? now - cur.since : 0);
+  return (s.segTime?.[id] || 0) + (cur?.id === id && !cur.paused ? now - cur.since : 0);
 }
 var currentSeg = (s) => s.segCurrent && (s.segments || []).find((x) => x.id === s.segCurrent.id);
 function segmentTopics(s, now) {
@@ -17708,17 +17708,26 @@ var ACTIONS = {
     view: (s) => s.mode === "live" ? { bg: COLORS.live, icon: "live", top: "ON AIR", label: "LIVE", sub: "\u2192 Rehearse" } : { icon: "live", top: "MODE", label: "Rehearse", sub: "\u2192 go Live" },
     press: () => ({ type: "mode.toggle" })
   },
-  // Show clock: a tap starts it (zeroing the segment timers); once running, hold
-  // 1s to restart it. Flashes while you're Live and it hasn't been started.
+  // Show clock: a tap starts it (zeroing the segment timers), then pauses /
+  // resumes it; once started, hold 1s to restart from 0:00. Flashes while
+  // you're Live and it hasn't been started, and while paused.
   clock: {
     ticks: true,
     hold: (s) => s.liveStart ? 1e3 : 0,
+    tap: () => ({ type: "clock.toggle" }),
+    // a press released before the hold
     view(s, _settings, now, holding) {
       if (holding) return { bg: COLORS.live, icon: "clock", top: "HOLD\u2026", label: "Restart", sub: "from 0:00" };
       if (!s.liveStart) return { bg: s.mode === "live" ? flash(now) : COLORS.idle, icon: "clock", top: "CLOCK", label: "Start", sub: "zeroes timers" };
-      return { bg: COLORS.on, icon: "clock", top: "SHOW TIME", label: fmtTime(now - s.liveStart), sub: "hold: restart" };
+      const t = (s.clockPausedAt || now) - s.liveStart - (s.clockPausedMs || 0);
+      if (s.clockPausedAt) {
+        const b = s.arcBreak;
+        return { bg: flash(now), icon: "clock", top: b ? `ARC ${b.arc} DONE` : "PAUSED", label: fmtTime(t), sub: b?.planTo ? `plan ${fmtTime(b.planTo * 6e4)}` : "tap: resume" };
+      }
+      return { bg: COLORS.on, icon: "clock", top: "SHOW TIME", label: fmtTime(t), sub: "tap: pause" };
     },
     press: () => ({ type: "clock.start" })
+    // not started: a tap; started: the hold (restart)
   },
   // Hold-to-confirm is handled in plugin.js; this is just the face.
   reset: {
@@ -17733,7 +17742,7 @@ var ACTIONS = {
       const segs = s.segments || [];
       if (!segs.length) return { icon: dir, top: dir === "next" ? "NEXT TAB" : "PREV TAB", label: dir === "next" ? "Next tab" : "Prev tab" };
       const i = segs.findIndex((x) => x.id === s.segCurrent?.id);
-      const j = i < 0 ? 0 : (i + (dir === "next" ? 1 : -1) + segs.length) % segs.length;
+      const j = i < 0 ? dir === "next" ? 0 : segs.length - 1 : i + (dir === "next" ? 1 : -1);
       const cur = segs[i];
       let sub = "";
       let bg = COLORS.idle;
@@ -17744,21 +17753,23 @@ var ACTIONS = {
         if (budget && spent > budget) bg = COLORS.over;
         else if (budget && spent >= 0.8 * budget) bg = COLORS.warn;
       }
+      if (j < 0 || j >= segs.length) return { bg, icon: dir, top: dir === "next" ? "LAST TAB" : "FIRST TAB", label: dir === "next" ? "End of show" : "Start", sub, dim: bg === COLORS.idle };
       return { bg, icon: dir, top: dir === "next" ? `\u2192 TAB ${j + 1}` : `\u2190 TAB ${j + 1}`, label: segs[j].label, sub };
     },
     press: (s, { dir = "next" }) => ({ type: dir === "prev" ? "tab.prev" : "tab.next" })
   },
-  // Hold-to-confirm, so a bumped key can't close the demo mid-show. On a slides
-  // segment shared as a single tab, closing it is how you end the screen share.
+  // On a slides segment it's END SHARE: closing a single shared tab ends the Meet
+  // share, so it fires on a normal press. Anywhere else it's hold-to-confirm, so a
+  // bumped key can't close the demo mid-show.
   closetab: {
-    hold: 500,
+    hold: (s) => currentSeg(s)?.slides ? 0 : 500,
     view(s, _settings, _now, holding) {
       const segs = s.segments || [];
       const i = segs.findIndex((x) => x.id === s.segCurrent?.id);
       const top = segs[i]?.slides ? "END SHARE" : "CLOSE TAB";
       if (holding) return { bg: COLORS.live, icon: "close", top: "HOLD\u2026", label: top === "END SHARE" ? "End share" : "Close tab", sub: "keep holding" };
       const next = i >= 0 ? segs[i + 1] : segs[0];
-      return { icon: "close", top, label: i >= 0 ? segs[i].label : "This tab", sub: next ? `\u2192 ${next.label}` : "hold \xBDs" };
+      return { icon: "close", top, label: i >= 0 ? segs[i].label : "This tab", sub: next ? `\u2192 ${next.label}` : top === "END SHARE" ? "" : "hold \xBDs" };
     },
     press: () => ({ type: "tab.close" })
   },
@@ -17817,9 +17828,9 @@ var DDAction = class extends SingletonAction {
     this.settings.set(ev.action.id, ev.payload.settings || {});
     return this.paint(ev.action);
   }
-  async fire(a) {
+  async fire(a, how = "press") {
     if (!bridge.connected || !bridge.state) return a.showAlert();
-    const action2 = this.def.press(bridge.state, this.settingsFor(a));
+    const action2 = this.def[how](bridge.state, this.settingsFor(a));
     if (!action2) return a.showAlert();
     const res = await bridge.action(action2);
     if (!res.ok) {
@@ -17832,7 +17843,7 @@ var DDAction = class extends SingletonAction {
     const hold = typeof this.def.hold === "function" ? this.def.hold(bridge.state || {}) : this.def.hold;
     if (!hold) return this.fire(a);
     if (!bridge.connected) return a.showAlert();
-    await this.paint(a, { holding: true });
+    if (!this.def.tap) await this.paint(a, { holding: true });
     this.holds.set(
       a.id,
       setTimeout(async () => {
@@ -17849,6 +17860,7 @@ var DDAction = class extends SingletonAction {
     if (t === void 0) return;
     clearTimeout(t);
     this.holds.delete(ev.action.id);
+    if (this.def.tap) await this.fire(ev.action, "tap");
     this.faces.delete(ev.action.id);
     await this.paint(ev.action);
   }

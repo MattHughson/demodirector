@@ -56,9 +56,9 @@ class DDAction extends SingletonAction {
     return this.paint(ev.action);
   }
 
-  async fire(a) {
+  async fire(a, how = 'press') {
     if (!bridge.connected || !bridge.state) return a.showAlert();
-    const action = this.def.press(bridge.state, this.settingsFor(a));
+    const action = this.def[how](bridge.state, this.settingsFor(a));
     if (!action) return a.showAlert(); // e.g. a segment-topic key with nothing in that slot
     const res = await bridge.action(action);
     if (!res.ok) {
@@ -73,7 +73,8 @@ class DDAction extends SingletonAction {
     if (!hold) return this.fire(a);
     // Hold-to-confirm (Reset closes tabs): fire only after the key is held.
     if (!bridge.connected) return a.showAlert();
-    await this.paint(a, { holding: true });
+    // Keys that also take a tap only show HOLD… once it's clearly a hold (the tick repaints it).
+    if (!this.def.tap) await this.paint(a, { holding: true });
     this.holds.set(
       a.id,
       setTimeout(async () => {
@@ -89,8 +90,9 @@ class DDAction extends SingletonAction {
   async onKeyUp(ev) {
     const t = this.holds.get(ev.action.id);
     if (t === undefined) return;
-    clearTimeout(t); // released too early → cancelled
+    clearTimeout(t); // released before the hold: cancelled, or a tap on keys that have one
     this.holds.delete(ev.action.id);
+    if (this.def.tap) await this.fire(ev.action, 'tap');
     this.faces.delete(ev.action.id);
     await this.paint(ev.action);
   }

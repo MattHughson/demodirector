@@ -71,6 +71,7 @@ const octx = out.getContext('2d');
 let maskData = null;
 let segmenterP = null;
 let running = false;
+let delegate = 'GPU';
 
 function getSegmenter() {
   segmenterP ??= (async () => {
@@ -85,19 +86,27 @@ function getSegmenter() {
       outputCategoryMask: false,
       outputConfidenceMasks: true,
     });
-    try {
-      return await ImageSegmenter.createFromOptions(fileset, options('GPU'));
-    } catch {
-      return ImageSegmenter.createFromOptions(fileset, options('CPU'));
+    if (delegate === 'GPU') {
+      try {
+        return await ImageSegmenter.createFromOptions(fileset, options('GPU'));
+      } catch {
+        delegate = 'CPU';
+      }
     }
+    return ImageSegmenter.createFromOptions(fileset, options('CPU'));
   })();
   return segmenterP;
+}
+
+// The canvas covers the video; the video stays visible underneath (never
+// opacity 0, or Chrome may stop painting it and the frames freeze).
+function showRaw(raw) {
+  out.hidden = raw;
 }
 
 function applyBackground() {
   const on = bg.mode === 'color' || bg.mode === 'blur';
   out.hidden = !on;
-  video.style.opacity = on ? '0' : ''; // keep it playing (and painting) as the source
   if (on && !running) {
     running = true;
     getSegmenter()
@@ -121,13 +130,27 @@ function sizeTo(w, h) {
 // Soften the mask a little: below 0.35 is background, above 0.65 is person.
 const ease = (p) => (p <= 0.35 ? 0 : p >= 0.65 ? 255 : ((p - 0.35) / 0.3) * 255);
 
+// Self-check: some GPUs (seen on Macs) hand back an all-zero mask, which would
+// paint only the background colour. If no frame in the first ~2s finds a person,
+// retry on the CPU; if that can't find one either, show the plain camera rather
+// than an empty bubble. Once a person has been seen, trust the segmenter.
+const CHECK_MS = 2500;
+let checkFrom = 0; // when the current segmenter's check started
+let seen = false;
+let warned = false;
+
 function loop(segmenter) {
+  let lastTime = -1;
+  let stopped = false;
   const step = () => {
+    if (stopped) return;
     if (!(bg.mode === 'color' || bg.mode === 'blur')) {
       running = false;
       return;
     }
-    if (video.readyState >= 2 && video.videoWidth) {
+    // Driven by the clock rather than requestVideoFrameCallback; only new frames are processed.
+    if (video.readyState >= 2 && video.videoWidth && video.currentTime !== lastTime) {
+      lastTime = video.currentTime;
       const H = Math.round((W * video.videoHeight) / video.videoWidth);
       sizeTo(W, H);
       fctx.drawImage(video, 0, 0, W, H);
@@ -137,7 +160,33 @@ function loop(segmenter) {
         const m = (masks[1] || masks[0])?.getAsFloat32Array();
         if (!m) return;
         const d = maskData.data;
-        for (let i = 0, j = 3; i < m.length; i++, j += 4) d[j] = ease(m[i]);
+        let peak = 0;
+        for (let i = 0, j = 3; i < m.length; i++, j += 4) {
+          d[j] = ease(m[i]);
+          if (m[i] > peak) peak = m[i];
+        }
+        if (!seen) {
+          if (peak > 0.65) {
+            seen = true;
+            showRaw(false);
+            console.info(`Demo Director: background replacement running (${delegate})`);
+          } else if ((checkFrom ||= performance.now()) && performance.now() - checkFrom > CHECK_MS) {
+            checkFrom = 0;
+            if (delegate === 'GPU') {
+              console.warn('Demo Director: GPU segmenter found no one; retrying on the CPU');
+              delegate = 'CPU';
+              stopped = true;
+              segmenter.close?.();
+              segmenterP = null;
+              getSegmenter().then(loop, () => showRaw(true));
+            } else {
+              if (!warned) console.warn("Demo Director: segmenter can't find you; showing the plain camera");
+              warned = true;
+              showRaw(true); // keep checking: it switches back on as soon as you're found
+            }
+            return;
+          }
+        }
         mctx.putImageData(maskData, 0, 0);
         // person = frame ∩ mask
         pctx.globalCompositeOperation = 'copy';
@@ -158,8 +207,7 @@ function loop(segmenter) {
         octx.drawImage(person, 0, 0);
       });
     }
-    if (video.requestVideoFrameCallback) video.requestVideoFrameCallback(step);
-    else requestAnimationFrame(step);
+    requestAnimationFrame(step);
   };
   step();
 }

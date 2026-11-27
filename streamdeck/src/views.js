@@ -15,7 +15,7 @@ function blinkPhase(camera, now) {
 
 function segSpent(s, id, now) {
   const cur = s.segCurrent;
-  return (s.segTime?.[id] || 0) + (cur?.id === id ? now - cur.since : 0);
+  return (s.segTime?.[id] || 0) + (cur?.id === id && !cur.paused ? now - cur.since : 0);
 }
 
 const currentSeg = (s) => s.segCurrent && (s.segments || []).find((x) => x.id === s.segCurrent.id);
@@ -157,17 +157,24 @@ export const ACTIONS = {
     press: () => ({ type: 'mode.toggle' }),
   },
 
-  // Show clock: a tap starts it (zeroing the segment timers); once running, hold
-  // 1s to restart it. Flashes while you're Live and it hasn't been started.
+  // Show clock: a tap starts it (zeroing the segment timers), then pauses /
+  // resumes it; once started, hold 1s to restart from 0:00. Flashes while
+  // you're Live and it hasn't been started, and while paused.
   clock: {
     ticks: true,
     hold: (s) => (s.liveStart ? 1000 : 0),
+    tap: () => ({ type: 'clock.toggle' }), // a press released before the hold
     view(s, _settings, now, holding) {
       if (holding) return { bg: COLORS.live, icon: 'clock', top: 'HOLD…', label: 'Restart', sub: 'from 0:00' };
       if (!s.liveStart) return { bg: s.mode === 'live' ? flash(now) : COLORS.idle, icon: 'clock', top: 'CLOCK', label: 'Start', sub: 'zeroes timers' };
-      return { bg: COLORS.on, icon: 'clock', top: 'SHOW TIME', label: fmtTime(now - s.liveStart), sub: 'hold: restart' };
+      const t = (s.clockPausedAt || now) - s.liveStart - (s.clockPausedMs || 0);
+      if (s.clockPausedAt) {
+        const b = s.arcBreak;
+        return { bg: flash(now), icon: 'clock', top: b ? `ARC ${b.arc} DONE` : 'PAUSED', label: fmtTime(t), sub: b?.planTo ? `plan ${fmtTime(b.planTo * 60000)}` : 'tap: resume' };
+      }
+      return { bg: COLORS.on, icon: 'clock', top: 'SHOW TIME', label: fmtTime(t), sub: 'tap: pause' };
     },
-    press: () => ({ type: 'clock.start' }),
+    press: () => ({ type: 'clock.start' }), // not started: a tap; started: the hold (restart)
   },
 
   // Hold-to-confirm is handled in plugin.js; this is just the face.
@@ -185,7 +192,7 @@ export const ACTIONS = {
       const segs = s.segments || [];
       if (!segs.length) return { icon: dir, top: dir === 'next' ? 'NEXT TAB' : 'PREV TAB', label: dir === 'next' ? 'Next tab' : 'Prev tab' };
       const i = segs.findIndex((x) => x.id === s.segCurrent?.id);
-      const j = i < 0 ? 0 : (i + (dir === 'next' ? 1 : -1) + segs.length) % segs.length;
+      const j = i < 0 ? (dir === 'next' ? 0 : segs.length - 1) : i + (dir === 'next' ? 1 : -1);
       const cur = segs[i];
       // Sub line: how the current segment is pacing, so the next-tab key doubles as a timer.
       let sub = '';
@@ -197,22 +204,24 @@ export const ACTIONS = {
         if (budget && spent > budget) bg = COLORS.over;
         else if (budget && spent >= 0.8 * budget) bg = COLORS.warn;
       }
+      if (j < 0 || j >= segs.length) return { bg, icon: dir, top: dir === 'next' ? 'LAST TAB' : 'FIRST TAB', label: dir === 'next' ? 'End of show' : 'Start', sub, dim: bg === COLORS.idle };
       return { bg, icon: dir, top: dir === 'next' ? `→ TAB ${j + 1}` : `← TAB ${j + 1}`, label: segs[j].label, sub };
     },
     press: (s, { dir = 'next' }) => ({ type: dir === 'prev' ? 'tab.prev' : 'tab.next' }),
   },
 
-  // Hold-to-confirm, so a bumped key can't close the demo mid-show. On a slides
-  // segment shared as a single tab, closing it is how you end the screen share.
+  // On a slides segment it's END SHARE: closing a single shared tab ends the Meet
+  // share, so it fires on a normal press. Anywhere else it's hold-to-confirm, so a
+  // bumped key can't close the demo mid-show.
   closetab: {
-    hold: 500,
+    hold: (s) => (currentSeg(s)?.slides ? 0 : 500),
     view(s, _settings, _now, holding) {
       const segs = s.segments || [];
       const i = segs.findIndex((x) => x.id === s.segCurrent?.id);
       const top = segs[i]?.slides ? 'END SHARE' : 'CLOSE TAB';
       if (holding) return { bg: COLORS.live, icon: 'close', top: 'HOLD…', label: top === 'END SHARE' ? 'End share' : 'Close tab', sub: 'keep holding' };
       const next = i >= 0 ? segs[i + 1] : segs[0];
-      return { icon: 'close', top, label: i >= 0 ? segs[i].label : 'This tab', sub: next ? `→ ${next.label}` : 'hold ½s' };
+      return { icon: 'close', top, label: i >= 0 ? segs[i].label : 'This tab', sub: next ? `→ ${next.label}` : top === 'END SHARE' ? '' : 'hold ½s' };
     },
     press: () => ({ type: 'tab.close' }),
   },
