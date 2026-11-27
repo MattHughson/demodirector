@@ -131,14 +131,47 @@ async function demoWindow() {
   }
 }
 
+const validUrl = (u) => /^https?:\/\/\S+$/.test(u || '');
+// Chrome split view (Chrome 140+ reports it; 155+ can create one).
+const inSplit = (t) => Number.isInteger(t?.splitViewId) && t.splitViewId !== -1;
+const urlOf = (t) => t?.url || t?.pendingUrl || '';
+
 // Pair each configured tab with an open tab in the window (each open tab used once).
+// A segment with splitUrl also owns a second pane: { tab, side, split } where
+// split = the two really are side by side in a Chrome split view. Split segments
+// are paired first, so a plain segment on the same site (say Studio) doesn't
+// claim the pane that's meant to sit beside GitHub.
 function pairTabs(cfg, tabs) {
   const used = new Set();
-  return cfg.map((c) => {
-    const tab = tabs.find((t) => !used.has(t.id) && tabMatches(t.url || t.pendingUrl || '', c.url));
-    if (tab) used.add(tab.id);
-    return { ...c, tab };
-  });
+  const take = (url, prefer) => {
+    const m = tabs.filter((t) => !used.has(t.id) && tabMatches(urlOf(t), url));
+    const t = m.find(prefer) || m[0];
+    if (t) used.add(t.id);
+    return t;
+  };
+  const out = cfg.map((c) => ({ ...c, splitUrl: validUrl(c.splitUrl) ? c.splitUrl : '' }));
+  for (const p of out.filter((x) => x.splitUrl)) {
+    const partnered = (t) => inSplit(t) && tabs.some((o) => o.id !== t.id && o.splitViewId === t.splitViewId && tabMatches(urlOf(o), p.splitUrl));
+    p.tab = take(p.url, partnered);
+    p.side = take(p.splitUrl, (t) => inSplit(t) && t.splitViewId === p.tab?.splitViewId);
+    p.split = !!(p.tab && p.side && inSplit(p.tab) && p.tab.splitViewId === p.side.splitViewId);
+  }
+  for (const p of out.filter((x) => !x.splitUrl)) p.tab = take(p.url, (t) => !inSplit(t));
+  return out;
+}
+// Is this browser tab (either pane of a split) the segment's?
+const owns = (p, id) => p.tab?.id === id || (p.split && p.side?.id === id);
+const onScreen = (p) => !!(p.tab?.active || (p.split && p.side?.active));
+
+// Panes that should stay clean: in a split segment, the camera bubble, topic and
+// Slack post draw in one pane only (overlays: 'main' | 'side'), not twice.
+async function quietTabs(settings) {
+  const win = await demoWindow();
+  if (!win) return [];
+  const tabs = await chrome.tabs.query({ windowId: win.id });
+  return pairTabs(configuredTabs(settings), tabs)
+    .filter((p) => p.split)
+    .map((p) => (p.overlays === 'side' ? p.tab.id : p.side.id));
 }
 
 const newSegId = () => `seg-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
@@ -155,8 +188,8 @@ async function tabsStatus() {
   const pairs = pairTabs(configuredTabs(settings), tabs);
   return {
     windowId: win?.id,
-    tabs: pairs.map((p) => ({ id: segId(p), label: p.label, url: p.url, open: !!p.tab, active: !!p.tab?.active, tabId: p.tab?.id })),
-    extra: tabs.filter((t) => !pairs.some((p) => p.tab?.id === t.id)).length,
+    tabs: pairs.map((p) => ({ id: segId(p), label: p.label, url: p.url, open: !!p.tab, active: onScreen(p), tabId: p.tab?.id, splitUrl: p.splitUrl, split: !!p.split })),
+    extra: tabs.filter((t) => !pairs.some((p) => p.tab?.id === t.id || p.side?.id === t.id)).length,
   };
 }
 
@@ -171,15 +204,31 @@ async function rebuildTabs() {
 
   // Open / restart first, close after, so the window never empties out.
   const ids = [];
+  const open = async (tab, url) => {
+    if (tab) {
+      await chrome.tabs.update(tab.id, { url });
+      return tab.id;
+    }
+    return (await chrome.tabs.create({ windowId: win.id, url, active: false })).id;
+  };
+  const toSplit = [];
   for (const p of pairs) {
-    if (p.tab) {
-      await chrome.tabs.update(p.tab.id, { url: p.url });
-      ids.push(p.tab.id);
-    } else {
-      ids.push((await chrome.tabs.create({ windowId: win.id, url: p.url, active: false })).id);
+    const id = await open(p.tab, p.url);
+    ids.push(id);
+    if (p.splitUrl) {
+      const side = await open(p.side, p.splitUrl);
+      ids.push(side); // right after its main pane, so the two stay adjacent
+      if (!p.split) toSplit.push([id, side]);
     }
   }
-  await chrome.tabs.move(ids, { index: 0 });
+  try {
+    await chrome.tabs.move(ids, { index: 0 });
+  } catch {
+    // Chrome can refuse to move split panes in a batch: place them one by one.
+    for (const [k, id] of ids.entries()) await chrome.tabs.move(id, { index: k }).catch(() => {});
+  }
+  // Put split segments back side by side (Chrome 155+; older Chrome leaves two tabs to split by hand).
+  for (const pair of toSplit) await chrome.tabs.createSplit?.(pair).catch(() => {});
   const keep = new Set(ids);
   const extra = tabs.filter((t) => !keep.has(t.id)).map((t) => t.id);
   if (extra.length) await chrome.tabs.remove(extra);
@@ -193,12 +242,12 @@ async function stepTab(delta) {
   if (!win) return { ok: false };
   const tabs = await chrome.tabs.query({ windowId: win.id });
   // Cycle through the demo tabs if any are configured and open; otherwise all tabs.
-  let ring = pairTabs(configuredTabs(settings), tabs).filter((p) => p.tab).map((p) => p.tab);
-  if (!ring.length) ring = tabs;
+  let ring = pairTabs(configuredTabs(settings), tabs).filter((p) => p.tab);
+  if (!ring.length) ring = tabs.map((tab) => ({ tab }));
   if (!ring.length) return { ok: false };
-  const i = ring.findIndex((t) => t.active);
+  const i = ring.findIndex(onScreen);
   const next = ring[(i + delta + ring.length) % ring.length];
-  await chrome.tabs.update(next.id, { active: true });
+  await chrome.tabs.update(next.tab.id, { active: true });
   return { ok: true };
 }
 
@@ -210,7 +259,7 @@ async function segmentForTab(tabId) {
   const tab = await chrome.tabs.get(tabId).catch(() => null);
   if (!tab) return null;
   const tabs = await chrome.tabs.query({ windowId: tab.windowId });
-  const pair = pairTabs(configuredTabs(settings), tabs).find((p) => p.tab?.id === tabId);
+  const pair = pairTabs(configuredTabs(settings), tabs).find((p) => owns(p, tabId));
   return pair ? { ...pair, id: segId(pair) } : null;
 }
 
@@ -249,6 +298,14 @@ async function trackSegmentNow() {
   // Once you're in a segment, its tab stays that segment however its URL changes
   // (clicking around, redirects, another origin): only switching tabs moves on.
   if (active && s.segCurrent?.tabId === active.id) return { ok: true, unchanged: true };
+  // Clicking into the other pane of a split keeps you in the same segment, wherever its URLs have wandered.
+  if (active && s.segCurrent && inSplit(active)) {
+    const was = await chrome.tabs.get(s.segCurrent.tabId).catch(() => null);
+    if (was?.splitViewId === active.splitViewId) {
+      await saveLive({ segCurrent: { ...s.segCurrent, tabId: active.id } });
+      return { ok: true, unchanged: true };
+    }
+  }
   const seg = active ? await segmentForTab(active.id) : null;
   const curId = s.segCurrent?.id || null;
   if ((seg?.id || null) === curId) {
@@ -266,6 +323,8 @@ async function trackSegmentNow() {
 
 chrome.tabs.onActivated.addListener(trackSegment);
 chrome.tabs.onUpdated.addListener((id, info) => info.url && trackSegment());
+// Splitting / unsplitting moves which pane gets the overlays.
+chrome.tabs.onUpdated.addListener((id, info) => info.splitViewId !== undefined && (trackSegment(), broadcast()));
 chrome.tabs.onRemoved.addListener(trackSegment);
 chrome.windows.onFocusChanged.addListener(trackSegment);
 
@@ -412,7 +471,13 @@ function normaliseVeil(v, veils) {
 
 const handlers = {
   async 'state.get'() {
-    return loadState();
+    const s = await loadState();
+    return { ...s, quietTabs: await quietTabs(s.settings) };
+  },
+
+  // A content script asking which tab it is (filled in from the sender).
+  async 'tab.whoami'({ tabId }) {
+    return { ok: true, tabId };
   },
 
   // ----- veils -----
@@ -542,11 +607,14 @@ const handlers = {
     if (tabs.length < 2) return { ok: false, error: "That's the last tab in the window" };
     const { settings } = await loadState();
     const ring = pairTabs(configuredTabs(settings), tabs).filter((p) => p.tab);
-    const i = ring.findIndex((p) => p.tab.id === active.id);
+    const i = ring.findIndex((p) => owns(p, active.id));
+    // A split segment closes both panes; any other split closes just the one on screen.
+    const close = i >= 0 && ring[i].split ? [ring[i].tab.id, ring[i].side.id] : [active.id];
+    if (tabs.length <= close.length) return { ok: false, error: "That's the last tab in the window" };
     // Next open segment after this one; from a non-segment tab, the first open segment.
-    const next = (i < 0 ? ring : ring.slice(i + 1)).find((p) => p.tab.id !== active.id);
+    const next = (i < 0 ? ring : ring.slice(i + 1)).find((p) => !close.includes(p.tab.id));
     if (next) await chrome.tabs.update(next.tab.id, { active: true });
-    await chrome.tabs.remove(active.id);
+    await chrome.tabs.remove(close);
     return { ok: true, next: next?.label || null };
   },
 
@@ -920,7 +988,7 @@ chrome.alarms.onAlarm.addListener((a) => a.name === 'dd-bridge' && bridgeConnect
 
 async function broadcast() {
   const state = await loadState();
-  const msg = { type: 'state', state };
+  const msg = { type: 'state', state: { ...state, quietTabs: await quietTabs(state.settings) } };
   const tabs = await chrome.tabs.query({ url: await pageMatches() });
   await Promise.all(tabs.map((t) => chrome.tabs.sendMessage(t.id, msg).catch(() => {})));
   chrome.runtime.sendMessage(msg).catch(() => {}); // popup / options, if open
@@ -963,7 +1031,7 @@ chrome.storage.onChanged.addListener((changes, area) => {
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg?.type !== 'action') return;
   const action = { ...msg.action };
-  if ((action.type === 'picker.start' || action.type === 'camera.place') && !action.tabId && sender.tab) action.tabId = sender.tab.id;
+  if (['picker.start', 'camera.place', 'tab.whoami'].includes(action.type) && !action.tabId && sender.tab) action.tabId = sender.tab.id;
   dispatch(action).then(sendResponse, (e) => sendResponse({ ok: false, error: String(e) }));
   return true;
 });

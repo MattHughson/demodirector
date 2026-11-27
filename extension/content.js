@@ -495,8 +495,17 @@
     applyClasses();
     if (state.mode === 'live') stopPicker();
     renderChip();
-    overlays.render(state);
+    // The other pane of a split segment: veils yes, but the camera, topic and Slack post draw only once.
+    const quiet = myTabId != null && (state.quietTabs || []).includes(myTabId);
+    overlays.render(
+      quiet ? { ...state, camera: { ...state.camera, on: false }, topic: { ...state.topic, shown: false }, slack: { ...state.slack, shown: false } } : state
+    );
   }
+  let myTabId = null;
+  send({ type: 'tab.whoami' }).then((r) => {
+    myTabId = r?.tabId ?? null;
+    if (state.settings) setState(state);
+  });
 
   chrome.runtime.onMessage.addListener((msg) => {
     if (msg?.type === 'state') setState(msg.state);

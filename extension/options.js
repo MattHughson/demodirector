@@ -398,6 +398,12 @@ function renderTabs(state) {
         <span class="ops"><button class="primary" data-allow hidden title="Let Demo Director run on this site">Allow</button><button data-d="-1" title="Move up">▲</button><button data-d="1" title="Move down">▼</button><button class="danger" data-x title="Remove">✕</button></span>
       </div>
       <div class="segopts">
+        <label class="splitw" title="Show a second page beside this one in a Chrome split view (e.g. Studio next to GitHub). Both panes count as this segment.">Split with (optional) <input type="text" name="split" placeholder="https://… second pane" spellcheck="false"></label>
+        <label title="In a split, the camera bubble, topic and Slack post appear in one pane only">Overlays in <select name="ovl">
+          <option value="main">Main pane</option><option value="side">Split pane</option>
+        </select></label>
+      </div>
+      <div class="segopts">
         <label>Camera on arrival <select name="cmode">
           <option value="keep">Keep as is</option><option value="on">On</option><option value="blink">On + blink</option><option value="off">Off</option>
         </select></label>
@@ -408,6 +414,19 @@ function renderTabs(state) {
       <div class="segtopics"><span>Topics in this segment <em>· Stream Deck keys Topic 1–3 follow this order and light up at the time you give (time into the segment, m:ss)</em></span><div class="list"></div><button data-tadd>+ Add topic</button></div>
       <div class="notes"><span>Talking points</span></div>`;
     const $c = (q) => card.querySelector(q);
+    const split = $c('[name=split]');
+    const ovl = $c('[name=ovl]');
+    split.value = t.splitUrl || '';
+    split.classList.toggle('bad', !!t.splitUrl && !validUrl(t.splitUrl));
+    ovl.value = t.overlays === 'side' ? 'side' : 'main';
+    ovl.disabled = !t.splitUrl;
+    split.onchange = () => {
+      const v = split.value.trim();
+      split.classList.toggle('bad', !!v && !validUrl(v));
+      if (v) allowSites([v]); // first, while the gesture is fresh
+      update({ splitUrl: v });
+    };
+    ovl.onchange = () => update({ overlays: ovl.value });
     const label = $c('[name=label]');
     const url = $c('[name=url]');
     label.value = t.label || '';

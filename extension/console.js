@@ -315,8 +315,13 @@ async function renderTabs() {
     b.dataset.status = t.active ? 'ON SCREEN' : t.open ? 'OPEN' : 'NOT OPEN';
     b.innerHTML = `<span class="n">${i + 1}</span><span class="l"><span class="tag">${at >= 0 && k === 0 ? 'NOW' : 'NEXT'}</span><b></b><small></small></span><span class="pill"></span>`;
     b.querySelector('b').textContent = t.label || new URL(t.url).host;
-    b.querySelector('small').textContent = t.url.replace(/^https?:\/\//, '');
-    b.querySelector('.pill').textContent = t.active ? 'ON SCREEN' : t.open ? 'OPEN' : 'NOT OPEN';
+    const host = (u) => u.replace(/^https?:\/\//, '');
+    b.querySelector('small').textContent = t.splitUrl ? `${host(t.url)}  ⧉  ${host(t.splitUrl)}` : host(t.url);
+    // A split segment whose two panes aren't side by side yet (older Chrome can't split them for you).
+    const unsplit = t.open && t.splitUrl && !t.split;
+    b.querySelector('.pill').textContent = unsplit ? 'NOT SPLIT' : t.active ? 'ON SCREEN' : t.open ? 'OPEN' : 'NOT OPEN';
+    if (unsplit) b.querySelector('.pill').title = 'Select both tabs and choose "Split view" in Chrome, or Reset demo on Chrome 155+';
+    b.querySelector('.pill').classList.toggle('warn', !!unsplit);
     b.title = t.open ? 'Switch to this tab' : 'Open this tab';
     b.onclick = () => send({ type: 'tab.activate', index: i });
     root.append(b);
