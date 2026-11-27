@@ -191,9 +191,15 @@ document.querySelectorAll('[data-reset]').forEach((b) => {
 
 // ----- topics -----
 
+// Skip a re-render only while you're typing in the list, not after clicking one of its buttons.
+const typingIn = (root) => {
+  const a = document.activeElement;
+  return root.contains(a) && (a.matches('input, textarea, select') || a.isContentEditable);
+};
+
 function renderTopics(state) {
   const root = $('#topics');
-  if (root.contains(document.activeElement)) return;
+  if (typingIn(root)) return;
   root.replaceChildren();
   state.settings.topics.forEach((t, i) => {
     const row = document.createElement('div');
@@ -374,7 +380,7 @@ function parseMin(v) {
 // Each demo tab is a segment of the run-of-show: tab + camera preset + talking points + time budget.
 function renderTabs(state) {
   const root = $('#tabs');
-  if (root.contains(document.activeElement)) return;
+  if (typingIn(root)) return;
   const list = state.settings.tabs;
   root.replaceChildren();
   if (!list.length) {
@@ -396,13 +402,10 @@ function renderTabs(state) {
           <option value="keep">Keep as is</option><option value="on">On</option><option value="blink">On + blink</option><option value="off">Off</option>
         </select></label>
         <label title="Hold the camera hidden for this long after arriving, then fade it in">Camera delay (s) <input type="number" name="cdelay" min="0" max="600" step="0.5" placeholder="0"></label>
-        <label title="Flash the Stream Deck topic key until you show a topic in this segment">Topic flash <select name="tflash">
-          <option value="off">No flash</option><option value="on">Flash</option>
-        </select></label>
-        <label title="How long after arriving the topic key starts flashing (0 = straight away)">Flash delay (s) <input type="number" name="tcue" min="0" max="600" step="0.5" placeholder="0"></label>
         <label>Time budget <input type="text" name="minutes" placeholder="m:ss" inputmode="decimal"></label>
         <span class="campos"></span>
       </div>
+      <div class="segtopics"><span>Topics in this segment <em>· Stream Deck keys Topic 1–3 follow this order and light up at the time you give (time into the segment, m:ss)</em></span><div class="list"></div><button data-tadd>+ Add topic</button></div>
       <div class="notes"><span>Talking points</span></div>`;
     const $c = (q) => card.querySelector(q);
     const label = $c('[name=label]');
@@ -417,19 +420,44 @@ function renderTabs(state) {
     cdelay.disabled = !delayable();
     cdelay.onchange = () => update({ camera: { ...(current.settings.tabs[i].camera || {}), delay: Math.max(0, Math.min(600, Number(cdelay.value) || 0)) } });
     $c('[name=minutes]').value = fmtMin(Number(t.minutes) || 0);
-    // topicCue: null = no flash, else seconds after arrival.
-    const tflash = $c('[name=tflash]');
-    const tcue = $c('[name=tcue]');
-    const flashing = Number.isFinite(t.topicCue);
-    tflash.value = flashing ? 'on' : 'off';
-    tcue.value = flashing && t.topicCue ? t.topicCue : '';
-    tcue.disabled = !flashing;
-    const cueSecs = () => Math.max(0, Math.min(600, Number(tcue.value) || 0));
-    tflash.onchange = () => {
-      tcue.disabled = tflash.value === 'off';
-      update({ topicCue: tflash.value === 'off' ? null : cueSecs() });
+    // Planned topics: [{ n, at }], n = topic number, at = seconds into the segment (null = no light-up).
+    const planned = Array.isArray(t.topics) ? t.topics : [];
+    const saveTopics = (list) => update({ topics: list });
+    const tlist = $c('.segtopics .list');
+    planned.forEach((p, k) => {
+      const row = document.createElement('div');
+      row.className = 'stopic';
+      row.innerHTML = `<span class="n">${k + 1}</span>
+        <select name="tn" aria-label="Topic">${state.settings.topics.map((x, j) => `<option value="${j + 1}"></option>`).join('')}</select>
+        <input type="text" name="tat" placeholder="m:ss" inputmode="decimal" aria-label="Around this far into the segment" title="Around this far into the segment, the key lights up. Empty = never lights up.">
+        <button data-td="-1" title="Earlier">▲</button><button data-td="1" title="Later">▼</button><button class="danger" data-tx title="Remove">✕</button>`;
+      const sel = row.querySelector('select');
+      [...sel.options].forEach((o, j) => (o.textContent = `${j + 1} · ${state.settings.topics[j].title}`));
+      sel.value = String(p.n);
+      const at = row.querySelector('input');
+      at.value = Number.isFinite(p.at) ? fmtMin(p.at / 60) || '0:00' : '';
+      const edit = (patch) => saveTopics(planned.map((x, j) => (j !== k ? x : { ...x, ...patch })));
+      sel.onchange = () => edit({ n: Number(sel.value) });
+      at.onchange = () => edit({ at: at.value.trim() ? Math.round(parseMin(at.value) * 60) : null });
+      row.querySelectorAll('[data-td]').forEach((b) => {
+        b.onclick = () => {
+          const next = [...planned];
+          const j = k + Number(b.dataset.td);
+          if (j < 0 || j >= next.length) return;
+          [next[k], next[j]] = [next[j], next[k]];
+          saveTopics(next);
+        };
+      });
+      row.querySelector('[data-tx]').onclick = () => saveTopics(planned.filter((_, j) => j !== k));
+      tlist.append(row);
+    });
+    $c('[data-tadd]').onclick = () => {
+      // Suggest the next topic number after the last one used anywhere before it, and a time after the last one here.
+      const used = list.slice(0, i + 1).flatMap((x) => (x.topics || []).map((y) => y.n));
+      const n = Math.min(state.settings.topics.length, (used.length ? Math.max(...used) : 0) + 1);
+      const lastAt = planned.at(-1)?.at;
+      saveTopics([...planned, { n, at: Number.isFinite(lastAt) ? lastAt + 60 : null }]);
     };
-    tcue.onchange = () => update({ topicCue: cueSecs() });
     const notesEd = DDRich.editor({
       value: t.notes || '',
       placeholder: 'What to say and do on this screen. Type "- " for bullets.',

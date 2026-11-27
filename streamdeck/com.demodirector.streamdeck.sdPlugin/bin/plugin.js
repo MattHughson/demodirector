@@ -17529,6 +17529,8 @@ var Bridge = class extends import_node_events.EventEmitter {
     eyeoff: '<path d="M10.6 5.1A10.8 10.8 0 0 1 12 5c6.4 0 10 7 10 7a18 18 0 0 1-2.9 3.9M6.6 6.6C3.9 8.4 2 12 2 12s3.6 7 10 7c1.8 0 3.4-.5 4.8-1.3"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2M3 3l18 18"/>',
     prev: '<path d="M15 5l-7 7 7 7"/>',
     next: '<path d="M9 5l7 7-7 7"/>',
+    clock: '<circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2.5M9 2h6"/>',
+    close: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9.5 9.5l5 5M14.5 9.5l-5 5"/>',
     reset: '<path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/>',
     monitor: '<rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/>',
     slides: '<rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M12 16v4M8 20h8M7 8h6M7 11h10"/>',
@@ -17538,7 +17540,7 @@ var Bridge = class extends import_node_events.EventEmitter {
     blink: '<rect x="2" y="6" width="14" height="12" rx="2" stroke-dasharray="3 2.5"/><path d="M16 10l6-3v10l-6-3z"/>'
   };
   const svg = (name, size = 24) => `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${P[name] || P.star}</svg>`;
-  const KEY_ONLY = ["eye", "eyeoff", "prev", "next", "reset", "monitor", "slides", "tabs", "maximize", "live", "blink"];
+  const KEY_ONLY = ["eye", "eyeoff", "prev", "next", "reset", "monitor", "slides", "tabs", "maximize", "live", "blink", "close", "clock"];
   root.DDIcons = { names: Object.keys(P).filter((n) => !KEY_ONLY.includes(n)), svg, paths: P };
 })(globalThis);
 
@@ -17594,12 +17596,20 @@ function segSpent(s, id, now) {
   const cur = s.segCurrent;
   return (s.segTime?.[id] || 0) + (cur?.id === id ? now - cur.since : 0);
 }
-function topicDue(s, now) {
-  const cur = s.segCurrent;
-  const seg = cur && (s.segments || []).find((x) => x.id === cur.id);
-  if (!seg || seg.topicCue == null || s.topic.shown) return false;
-  return now >= cur.since + seg.topicCue * 1e3 && (s.topic.shownAt || 0) < cur.since;
+var currentSeg = (s) => s.segCurrent && (s.segments || []).find((x) => x.id === s.segCurrent.id);
+function segmentTopics(s, now) {
+  const seg = currentSeg(s);
+  if (!seg) return null;
+  const t = segSpent(s, seg.id, now);
+  const done = s.topic.done?.[seg.id] || [];
+  return (seg.topics || []).map((x) => {
+    const left = x.at == null ? null : x.at * 1e3 - t;
+    const status = s.topic.shown && s.topic.index === x.n ? "onair" : done.includes(x.n) ? "done" : left != null && left <= 0 ? "due" : "later";
+    return { ...x, left, status };
+  });
 }
+var topicDue = (s, now) => !s.topic.shown && !!segmentTopics(s, now)?.some((x) => x.status === "due");
+var flash = (now) => Math.floor(now / 1e3) % 2 === 0 ? COLORS.accent : COLORS.idle;
 var ACTIONS = {
   veil: {
     defaults: { slot: 1 },
@@ -17635,17 +17645,28 @@ var ACTIONS = {
     press: () => ({ type: "camera.size" })
   },
   topic: {
-    defaults: { mode: "next", index: 1 },
+    defaults: { mode: "next", index: 1, slot: 1 },
     ticks: true,
-    // flashes when the segment's topic is due
+    // countdowns, and flashing when a planned topic is due
     view(s, settings2, now) {
-      const face = this.face(s, settings2);
       const { mode = "next" } = settings2;
-      if ((mode === "toggle" || mode === "next") && topicDue(s, now)) {
-        const lit = Math.floor(now / 1e3) % 2 === 0;
-        return { ...face, bg: lit ? COLORS.accent : COLORS.idle, top: "SHOW TOPIC" };
-      }
+      if (mode === "segment") return this.slotFace(s, settings2, now);
+      const face = this.face(s, settings2);
+      if ((mode === "toggle" || mode === "next") && topicDue(s, now)) return { ...face, bg: flash(now), top: "SHOW TOPIC" };
       return face;
+    },
+    // Segment topic N: whichever topic the current segment lists Nth.
+    slotFace(s, { slot = 1 }, now) {
+      const list = segmentTopics(s, now);
+      if (!list) return { icon: "star", top: `TOPIC ${slot}`, label: "No segment", dim: true };
+      const x = list[slot - 1];
+      if (!x) return { icon: "star", top: `TOPIC ${slot}`, label: "\u2014", sub: "none here", dim: true };
+      const t = s.topics?.[x.n - 1] || {};
+      const face = { icon: t.icon || "star", label: t.title || `Step ${x.n}` };
+      if (x.status === "onair") return { ...face, bg: COLORS.accent, top: "ON AIR", sub: "press to hide" };
+      if (x.status === "done") return { ...face, top: "SHOWN", sub: "press to re-show", dim: true };
+      if (x.status === "due") return { ...face, bg: flash(now), top: "SHOW NOW", sub: `planned ${fmtTime(x.at * 1e3)}` };
+      return { ...face, top: x.left != null ? `IN ${fmtTime(x.left)}` : `TOPIC ${slot}`, sub: x.at != null ? `at ${fmtTime(x.at * 1e3)}` : "" };
     },
     face(s, { mode = "next", index = 1 }) {
       const t = s.topic;
@@ -17664,7 +17685,12 @@ var ACTIONS = {
       if (!t.index) return { icon: "star", top: "TOPIC", label: "None yet", sub: "press for step 1" };
       return t.shown ? { bg: COLORS.accent, icon: t.icon || "star", top: "ON AIR", label: `Step ${t.index}`, sub: t.title } : { icon: t.icon || "star", top: t.cued ? "UP NEXT" : "HIDDEN", label: `Step ${t.index}`, sub: t.title };
     },
-    press(s, { mode = "next", index = 1 }) {
+    press(s, { mode = "next", index = 1, slot = 1 }) {
+      if (mode === "segment") {
+        const x = segmentTopics(s, Date.now())?.[slot - 1];
+        if (!x) return null;
+        return x.status === "onair" ? { type: "topic.hide" } : { type: "topic.show", index: x.n };
+      }
       if (mode === "prev") return { type: "topic.prev" };
       if (mode === "toggle") return { type: "topic.toggle" };
       if (mode === "show") {
@@ -17681,6 +17707,18 @@ var ACTIONS = {
   mode: {
     view: (s) => s.mode === "live" ? { bg: COLORS.live, icon: "live", top: "ON AIR", label: "LIVE", sub: "\u2192 Rehearse" } : { icon: "live", top: "MODE", label: "Rehearse", sub: "\u2192 go Live" },
     press: () => ({ type: "mode.toggle" })
+  },
+  // Show clock: a tap starts it (zeroing the segment timers); once running, hold
+  // 1s to restart it. Flashes while you're Live and it hasn't been started.
+  clock: {
+    ticks: true,
+    hold: (s) => s.liveStart ? 1e3 : 0,
+    view(s, _settings, now, holding) {
+      if (holding) return { bg: COLORS.live, icon: "clock", top: "HOLD\u2026", label: "Restart", sub: "from 0:00" };
+      if (!s.liveStart) return { bg: s.mode === "live" ? flash(now) : COLORS.idle, icon: "clock", top: "CLOCK", label: "Start", sub: "zeroes timers" };
+      return { bg: COLORS.on, icon: "clock", top: "SHOW TIME", label: fmtTime(now - s.liveStart), sub: "hold: restart" };
+    },
+    press: () => ({ type: "clock.start" })
   },
   // Hold-to-confirm is handled in plugin.js; this is just the face.
   reset: {
@@ -17710,6 +17748,20 @@ var ACTIONS = {
     },
     press: (s, { dir = "next" }) => ({ type: dir === "prev" ? "tab.prev" : "tab.next" })
   },
+  // Hold-to-confirm, so a bumped key can't close the demo mid-show. On a slides
+  // segment shared as a single tab, closing it is how you end the screen share.
+  closetab: {
+    hold: 500,
+    view(s, _settings, _now, holding) {
+      const segs = s.segments || [];
+      const i = segs.findIndex((x) => x.id === s.segCurrent?.id);
+      const top = segs[i]?.slides ? "END SHARE" : "CLOSE TAB";
+      if (holding) return { bg: COLORS.live, icon: "close", top: "HOLD\u2026", label: top === "END SHARE" ? "End share" : "Close tab", sub: "keep holding" };
+      const next = i >= 0 ? segs[i + 1] : segs[0];
+      return { icon: "close", top, label: i >= 0 ? segs[i].label : "This tab", sub: next ? `\u2192 ${next.label}` : "hold \xBDs" };
+    },
+    press: () => ({ type: "tab.close" })
+  },
   slide: {
     defaults: { dir: "next" },
     view: (s, { dir = "next" }) => ({ icon: dir, top: "SLIDES", label: dir === "next" ? "Next slide" : "Prev slide" }),
@@ -17720,7 +17772,7 @@ var ACTIONS = {
     press: () => ({ type: "console.open" })
   }
 };
-var DISCONNECTED = (name) => ({ bg: COLORS.off, icon: { veil: "eye", camera: "camera", blink: "blink", camsize: "maximize", topic: "star", slack: "chat", mode: "live", reset: "reset", tab: "next", slide: "slides", console: "monitor" }[name], top: "OFFLINE", label: "Chrome?", sub: "not connected", dim: true });
+var DISCONNECTED = (name) => ({ bg: COLORS.off, icon: { veil: "eye", camera: "camera", blink: "blink", camsize: "maximize", topic: "star", slack: "chat", mode: "live", reset: "reset", tab: "next", closetab: "close", clock: "clock", slide: "slides", console: "monitor" }[name], top: "OFFLINE", label: "Chrome?", sub: "not connected", dim: true });
 
 // src/plugin.js
 var log = plugin_default.logger;
@@ -17741,6 +17793,7 @@ var DDAction = class extends SingletonAction {
   async paint(a, { holding = false } = {}) {
     if (!a.isKey?.()) return;
     const s = bridge.connected && bridge.state;
+    holding ||= this.holds.has(a.id);
     const face = s ? this.def.view(s, this.settingsFor(a), Date.now(), holding) : DISCONNECTED(this.name);
     const img = keyImage(face);
     if (this.faces.get(a.id) === img) return;
@@ -17766,7 +17819,9 @@ var DDAction = class extends SingletonAction {
   }
   async fire(a) {
     if (!bridge.connected || !bridge.state) return a.showAlert();
-    const res = await bridge.action(this.def.press(bridge.state, this.settingsFor(a)));
+    const action2 = this.def.press(bridge.state, this.settingsFor(a));
+    if (!action2) return a.showAlert();
+    const res = await bridge.action(action2);
     if (!res.ok) {
       log.warn(`${this.name}: ${res.error}`);
       await a.showAlert();
@@ -17774,7 +17829,8 @@ var DDAction = class extends SingletonAction {
   }
   async onKeyDown(ev) {
     const a = ev.action;
-    if (!this.def.hold) return this.fire(a);
+    const hold = typeof this.def.hold === "function" ? this.def.hold(bridge.state || {}) : this.def.hold;
+    if (!hold) return this.fire(a);
     if (!bridge.connected) return a.showAlert();
     await this.paint(a, { holding: true });
     this.holds.set(
@@ -17785,7 +17841,7 @@ var DDAction = class extends SingletonAction {
         this.faces.delete(a.id);
         await this.paint(a);
         await a.showOk();
-      }, this.def.hold)
+      }, hold)
     );
   }
   async onKeyUp(ev) {

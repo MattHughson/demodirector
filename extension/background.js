@@ -11,7 +11,8 @@
 //   revealed: [veilId]  — a veil is ON unless listed here, so fresh = fully veiled
 //   mode:     'rehearse' | 'live'
 //   camera:   { on, blink, blinkStart, size: 's'|'m'|'l' }
-//   topic:    { index: 0-10, shown, shownAt, cued } — cued: auto-hidden, index already moved to the next one
+//   topic:    { index: 0-10, shown, shownAt, cued, done } — cued: auto-hidden, index already moved to the next one;
+//             done: { [segId]: [topic n] } shown in that segment since the last Reset
 //   slack:    { shown, at }
 
 // Built-in sites; any other demo site (e.g. the storefront) is added at runtime
@@ -57,7 +58,7 @@ const LIVE_DEFAULTS = {
   // size: 's' | 'm' | 'l' | <px>; pos: null (default top-right) or { corner: 'tl'|'tr'|'bl'|'br', x, y }
   // showAt: while in the future, the bubble is on but held hidden (segment arrival delay).
   camera: { on: false, blink: false, blinkStart: 0, size: 'm', pos: null, showAt: null },
-  topic: { index: 0, shown: false, shownAt: 0, cued: false },
+  topic: { index: 0, shown: false, shownAt: 0, cued: false, done: {} },
   slack: { shown: false, at: 0 },
   // Segments (demo tabs) timing: ms spent per segment id, the one on screen now, and the Live clock.
   segTime: {},
@@ -492,10 +493,10 @@ const handlers = {
     await saveLive({
       revealed: [],
       slack: { shown: false, at: 0 },
-      topic: { ...topic, shown: false, cued: false },
+      topic: { ...topic, shown: false, cued: false, done: {} },
       segTime: {},
       segCurrent: null,
-      liveStart: mode === 'live' ? Date.now() : null,
+      liveStart: null, // the show clock waits for Start clock
     });
     const tabs = settings.resetTabs && configuredTabs(settings).length ? await rebuildTabs() : null;
     trackSegment(); // start timing whichever segment is on screen now
@@ -530,6 +531,25 @@ const handlers = {
     return stepTab(-1);
   },
 
+  // Close the tab on screen and move on to the next demo segment (Chrome would
+  // otherwise jump to whichever tab sits beside it). Never closes the last tab.
+  async 'tab.close'() {
+    const win = await demoWindow();
+    if (!win) return { ok: false, error: 'No browser window' };
+    const tabs = await chrome.tabs.query({ windowId: win.id });
+    const active = tabs.find((t) => t.active);
+    if (!active) return { ok: false, error: 'No tab on screen' };
+    if (tabs.length < 2) return { ok: false, error: "That's the last tab in the window" };
+    const { settings } = await loadState();
+    const ring = pairTabs(configuredTabs(settings), tabs).filter((p) => p.tab);
+    const i = ring.findIndex((p) => p.tab.id === active.id);
+    // Next open segment after this one; from a non-segment tab, the first open segment.
+    const next = (i < 0 ? ring : ring.slice(i + 1)).find((p) => p.tab.id !== active.id);
+    if (next) await chrome.tabs.update(next.tab.id, { active: true });
+    await chrome.tabs.remove(active.id);
+    return { ok: true, next: next?.label || null };
+  },
+
   async 'tab.activate'({ index }) {
     const st = await tabsStatus();
     const t = st.tabs[index];
@@ -551,9 +571,23 @@ const handlers = {
 
   async 'mode.set'({ mode }) {
     if (mode !== 'live' && mode !== 'rehearse') return { ok: false, error: 'Bad mode' };
-    const { liveStart } = await loadState();
-    await saveLive({ mode, ...(mode === 'live' && !liveStart && { liveStart: Date.now() }) });
+    await saveLive({ mode });
     return { ok: true, mode };
+  },
+
+  // The show starts now: zero the show clock, every segment timer and the
+  // "shown" marks on planned topics, and time the segment on screen from here.
+  // (You may have been sharing for a while before the meeting really began.)
+  async 'clock.start'() {
+    const { topic, segCurrent } = await loadState();
+    const now = Date.now();
+    await saveLive({
+      liveStart: now,
+      segTime: {},
+      segCurrent: segCurrent ? { ...segCurrent, since: now } : null,
+      topic: { ...topic, done: {} },
+    });
+    return { ok: true };
   },
 
   async 'mode.toggle'() {
@@ -636,10 +670,13 @@ const handlers = {
   // ----- topics (lower-thirds) -----
 
   async 'topic.show'({ index }) {
-    const { settings } = await loadState();
+    const { settings, topic, segCurrent } = await loadState();
     const n = Math.max(1, Math.min(settings.topics.length, Number(index) || 1));
     const shownAt = Date.now();
-    await saveLive({ topic: { index: n, shown: true, shownAt, cued: false } });
+    // Remember it was covered in this segment, so its Deck key stops lighting up.
+    const done = { ...topic.done };
+    if (segCurrent) done[segCurrent.id] = [...new Set([...(done[segCurrent.id] || []), n])];
+    await saveLive({ topic: { index: n, shown: true, shownAt, cued: false, done } });
     const secs = Math.max(0, Math.min(600, Number(settings.lowerThird.autoHide) || 0));
     if (secs) setTimeout(() => dispatch({ type: 'topic.autohide', shownAt }), secs * 1000);
     return { ok: true, index: n };
@@ -792,6 +829,13 @@ let bridgePort = 0;
 let bridgeRetry = 0;
 let bridgeTimer = 0;
 
+// A segment's topics, in script order: n = topic number (1-based), at = seconds of segment time.
+function segTopics(seg, count) {
+  return (Array.isArray(seg.topics) ? seg.topics : [])
+    .map((x) => ({ n: Number(x?.n), at: Number.isFinite(x?.at) ? x.at : null }))
+    .filter((x) => Number.isInteger(x.n) && x.n >= 1 && x.n <= count);
+}
+
 function bridgeSlim(s) {
   const t = s.settings.topics[s.topic.index - 1];
   return {
@@ -805,7 +849,8 @@ function bridgeSlim(s) {
       id: segId(x),
       label: x.label || x.url,
       minutes: Number(x.minutes) || 0,
-      topicCue: Number.isFinite(x.topicCue) ? x.topicCue : null, // s after arrival to flash the topic key; null = never
+      slides: SLIDES_URL.test(x.url), // closing a shared slides tab ends the screen share
+      topics: segTopics(x, s.settings.topics.length), // [{ n, at }]: at = s into the segment to light its key, null = never
     })),
     segTime: s.segTime,
     segCurrent: s.segCurrent,
@@ -939,6 +984,8 @@ const COMMANDS = {
   'slide-next': { type: 'slide.next' },
   'slide-prev': { type: 'slide.prev' },
   'tab-prev': { type: 'tab.prev' },
+  'tab-close': { type: 'tab.close' },
+  'clock-start': { type: 'clock.start' },
 };
 
 chrome.commands.onCommand.addListener((command, tab) => {

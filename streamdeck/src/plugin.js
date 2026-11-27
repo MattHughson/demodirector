@@ -27,6 +27,7 @@ class DDAction extends SingletonAction {
   async paint(a, { holding = false } = {}) {
     if (!a.isKey?.()) return;
     const s = bridge.connected && bridge.state;
+    holding ||= this.holds.has(a.id); // keys that tick (clock) keep the HOLD face while held
     const face = s ? this.def.view(s, this.settingsFor(a), Date.now(), holding) : DISCONNECTED(this.name);
     const img = keyImage(face);
     if (this.faces.get(a.id) === img) return;
@@ -57,7 +58,9 @@ class DDAction extends SingletonAction {
 
   async fire(a) {
     if (!bridge.connected || !bridge.state) return a.showAlert();
-    const res = await bridge.action(this.def.press(bridge.state, this.settingsFor(a)));
+    const action = this.def.press(bridge.state, this.settingsFor(a));
+    if (!action) return a.showAlert(); // e.g. a segment-topic key with nothing in that slot
+    const res = await bridge.action(action);
     if (!res.ok) {
       log.warn(`${this.name}: ${res.error}`);
       await a.showAlert();
@@ -66,7 +69,8 @@ class DDAction extends SingletonAction {
 
   async onKeyDown(ev) {
     const a = ev.action;
-    if (!this.def.hold) return this.fire(a);
+    const hold = typeof this.def.hold === 'function' ? this.def.hold(bridge.state || {}) : this.def.hold;
+    if (!hold) return this.fire(a);
     // Hold-to-confirm (Reset closes tabs): fire only after the key is held.
     if (!bridge.connected) return a.showAlert();
     await this.paint(a, { holding: true });
@@ -78,7 +82,7 @@ class DDAction extends SingletonAction {
         this.faces.delete(a.id);
         await this.paint(a);
         await a.showOk();
-      }, this.def.hold)
+      }, hold)
     );
   }
 

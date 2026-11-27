@@ -95,11 +95,7 @@ function renderCamera({ camera, settings }) {
 
 function renderTopics({ topic, settings }) {
   const t = settings.topics[topic.index - 1];
-  const now = $('#now');
-  now.classList.toggle('on', topic.shown);
-  now.innerHTML = `<span class="ico">${DDIcons.svg(t?.icon || 'star', 24)}</span><span><div class="k"></div><div class="t"></div></span>`;
-  now.querySelector('.k').textContent = t ? `Step ${topic.index} · ${topic.shown ? 'on screen' : topic.cued ? 'up next' : 'hidden'}` : 'No topic yet';
-  now.querySelector('.t').textContent = t ? t.title : 'Press Next to show Step 1';
+  $('#topicNow').textContent = topic.shown && t ? `on screen: ${topic.index} · ${t.title}` : '';
 
   const list = $('#topics');
   list.replaceChildren();
@@ -197,11 +193,55 @@ const timeText = (id, minutes) => {
   return budget ? `${fmt(spent(id))} / ${fmt(budget)}` : fmt(spent(id));
 };
 
+// The current segment's planned topics, in order (same states as the Deck's Topic 1–3 keys).
+function renderSegTopics(seg) {
+  const root = $('#nsTopics');
+  const id = seg && segKey(seg);
+  const done = (id && state.topic.done?.[id]) || [];
+  const items = (seg?.topics || [])
+    .filter((x) => state.settings.topics[x.n - 1])
+    .map((x) => {
+      const status =
+        state.topic.shown && state.topic.index === x.n ? 'onair' : done.includes(x.n) ? 'done' : Number.isFinite(x.at) && spent(id) >= x.at * 1000 ? 'due' : '';
+      return { ...x, status };
+    });
+  // Rebuilt only when something changes (this runs every second), so clicks aren't lost.
+  const sig = JSON.stringify([id, items, state.settings.topics]);
+  if (root.dataset.sig === sig) return;
+  root.dataset.sig = sig;
+  root.replaceChildren();
+  items.forEach((x, k) => {
+    const t = state.settings.topics[x.n - 1];
+    const b = document.createElement('button');
+    b.className = `stp ${x.status}`;
+    b.title = x.status === 'onair' ? 'On screen: click to hide' : `Show topic ${x.n}`;
+    b.innerHTML = `${DDIcons.svg(t.icon, 16)}<span class="ti"></span><span class="at"></span>`;
+    b.querySelector('.ti').textContent = `${k + 1}. ${t.title}`;
+    b.querySelector('.at').textContent = x.status === 'onair' ? 'ON AIR' : x.status === 'done' ? 'shown' : Number.isFinite(x.at) ? `~${fmt(x.at * 1000)}` : '';
+    b.onclick = () => send(x.status === 'onair' ? { type: 'topic.hide' } : { type: 'topic.show', index: x.n });
+    root.append(b);
+  });
+}
+
+// Start clock: one click when stopped; once running, a second click within 3s restarts it.
+let clockArmed = 0;
+$('#clock').onclick = () => {
+  if (!state?.liveStart || clockArmed) {
+    clearTimeout(clockArmed);
+    clockArmed = 0;
+    send({ type: 'clock.start' });
+  } else {
+    clockArmed = setTimeout(() => ((clockArmed = 0), renderTimers()), 3000);
+  }
+  renderTimers();
+};
+
 function renderTimers() {
   if (!state) return;
   const clock = $('#clock');
   clock.classList.toggle('off', !state.liveStart);
-  clock.textContent = state.liveStart ? `⏱ ${fmt(Date.now() - state.liveStart)}` : 'clock starts when you go Live';
+  clock.classList.toggle('confirm', !!clockArmed);
+  clock.textContent = clockArmed ? 'Restart from 0:00? Click again' : state.liveStart ? `⏱ ${fmt(Date.now() - state.liveStart)}` : '▶ Start clock';
 
   const segs = state.settings.tabs.filter(validSeg);
   const i = segs.findIndex((t) => segKey(t) === state.segCurrent?.id);
@@ -234,6 +274,7 @@ function renderTimers() {
     }
     $('#nsNotes').classList.toggle('empty', DDRich.isEmpty(seg.notes));
   }
+  renderSegTopics(seg);
   // Slides mode: the deck segment's timer next to the slide number
   const st = $('#slSegTime');
   st.className = `segt ${seg ? pace(segKey(seg), seg.minutes) : ''}`;
@@ -260,12 +301,19 @@ async function renderTabs() {
     root.innerHTML = '<div class="msg">No demo tabs set. Add them in Settings → Demo tabs. Prev/Next will cycle all tabs until then.</div>';
     return;
   }
-  st.tabs.forEach((t, i) => {
+  // Only where you are and where you're going next: no going back, earlier tabs may be closed.
+  let at = st.tabs.findIndex((t) => t.active);
+  if (at < 0) at = st.tabs.findIndex((t) => t.id === state?.segCurrent?.id);
+  const show = at < 0 ? [0] : [at, at + 1].filter((k) => k < st.tabs.length);
+  const left = st.tabs.length - 1 - (at < 0 ? 0 : at + 1);
+  $('#runCount').textContent = at < 0 ? `${st.tabs.length} segments` : `${at + 1} / ${st.tabs.length}${left > 0 ? ` · ${left} more after` : ''}`;
+  show.forEach((i, k) => {
+    const t = st.tabs[i];
     const b = document.createElement('button');
     b.className = `tabi${t.active ? ' active' : ''}${t.open ? '' : ' missing'}`;
     b.dataset.id = t.id;
     b.dataset.status = t.active ? 'ON SCREEN' : t.open ? 'OPEN' : 'NOT OPEN';
-    b.innerHTML = `<span class="n">${i + 1}</span><span class="l"><b></b><small></small></span><span class="pill"></span>`;
+    b.innerHTML = `<span class="n">${i + 1}</span><span class="l"><span class="tag">${at >= 0 && k === 0 ? 'NOW' : 'NEXT'}</span><b></b><small></small></span><span class="pill"></span>`;
     b.querySelector('b').textContent = t.label || new URL(t.url).host;
     b.querySelector('small').textContent = t.url.replace(/^https?:\/\//, '');
     b.querySelector('.pill').textContent = t.active ? 'ON SCREEN' : t.open ? 'OPEN' : 'NOT OPEN';
@@ -426,11 +474,8 @@ $('#reset').onclick = () => send({ type: 'reset' });
 $('#camOn').onclick = () => send({ type: 'camera.toggle' });
 $('#camBlink').onclick = () => send({ type: 'camera.blink' });
 $('#camSize').onclick = () => send({ type: 'camera.size' });
-$('#now').onclick = $('#toggle').onclick = () => send({ type: 'topic.toggle' });
-$('#prev').onclick = () => send({ type: 'topic.prev' });
-$('#next').onclick = () => send({ type: 'topic.next' });
 $('#slack').onclick = () => send({ type: 'slack.toggle' });
-$('#tabPrev').onclick = () => send({ type: 'tab.prev' });
+$('#tabClose').onclick = () => send({ type: 'tab.close' });
 $('#tabNext').onclick = () => send({ type: 'tab.next' });
 $('#settings').onclick = () => chrome.runtime.openOptionsPage();
 $('#shortcuts').onclick = () => chrome.tabs.create({ url: 'chrome://extensions/shortcuts' });

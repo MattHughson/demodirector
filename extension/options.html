@@ -58,6 +58,14 @@
     .segopts .campos { font-size: 12px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
     .segopts .campos button { padding: 3px 8px; font-size: 12px; }
     .seg .notes { padding-left: 32px; }
+    .segtopics { display: grid; gap: 6px; padding-left: 32px; font-size: 12px; font-weight: 600; color: var(--muted); justify-items: start; }
+    .segtopics em { font-style: normal; font-weight: 400; }
+    .segtopics .list { display: grid; gap: 6px; justify-self: stretch; }
+    .segtopics .list:empty { display: none; }
+    .stopic { display: grid; grid-template-columns: 18px minmax(0, 320px) 80px auto auto auto; gap: 6px; align-items: center; }
+    .stopic .n { text-align: right; font-variant-numeric: tabular-nums; }
+    .stopic select, .stopic input { font-weight: 400; min-width: 0; }
+    .stopic button, .segtopics > button { padding: 3px 8px; font-size: 12px; }
     .rich { border: 1px solid var(--line); border-radius: 8px; background: var(--bg); overflow: hidden; }
     .rich-bar { display: flex; gap: 2px; flex-wrap: wrap; padding: 4px; border-bottom: 1px solid var(--line); background: var(--panel); }
     .rich-bar button { padding: 2px 8px; font-size: 12px; border-color: transparent; background: transparent; }
@@ -70,7 +78,7 @@
     .rich-area ul, .rich-area ol { margin: 4px 0; padding-left: 22px; }
     .rich-area p { margin: 0 0 4px; }
     .rich-area mark { background: #fef0c7; color: inherit; border-radius: 2px; padding: 0 2px; }
-    @media (max-width: 620px) { .segopts, .seg .notes { padding-left: 0; } }
+    @media (max-width: 620px) { .segopts, .seg .notes, .segtopics { padding-left: 0; } }
     .tabrow { display: grid; grid-template-columns: 24px minmax(120px, 1fr) 2fr auto; gap: 8px; align-items: center; }
     .tabrow .n { font-weight: 700; text-align: center; font-variant-numeric: tabular-nums; }
     .tabrow .ops { display: flex; gap: 4px; }

@@ -57,6 +57,8 @@ If you want the whole second line of every row gone (dates **and** status-only t
 
 The 10 script steps come from `topics.json` and can be edited in Settings (title and icon). They appear bottom-left as *STEP N · Title*. Use **◀ / ▶** to step through them and the topic button to show or hide the current one.
 
+**Topics per segment.** In Settings → Segments, each segment has a *Topics in this segment* list: pick the topics you'll cover there, in order, each with a rough time into the segment (m:ss). The Stream Deck's **Topic 1 / 2 / 3** keys then show that segment's topics only. A key counts down (*IN 0:45*), flashes *SHOW NOW* when its time comes, turns orange when it's on air, and dims to *SHOWN* once you've shown it. Times count segment time, the same clock as the segment's budget, so leaving and coming back carries on where you left off. The console shows the same list above the talking points. Reset clears the *shown* marks.
+
 ## Slack notification
 
 The defaults are in `slack-toast.json` and can be edited in Settings, where you can also upload the avatar. The post slides in from the top-right and sits below the camera bubble when it's on. Clicking it dismisses it. It stays until dismissed, unless `autoHideSeconds` is set. The optional chime is synthesised in the page, so tab-audio sharing picks it up.
@@ -76,7 +78,11 @@ Each demo tab is a **segment**. In **Settings → Segments**, each one has:
 - **Time budget:** `m:ss` or minutes.
 - **Talking points:** what to say and do on this screen. A rich-text box with **bold**, *italic*, underline, highlight, bulleted and numbered lists. Typing `- ` or `1. ` at the start of a line starts a list, and ⌘B / ⌘I / ⌘U work. Pasted text comes in plain. The console shows the formatting.
 
-In the console, the **Now** card shows the current segment's talking points and its timer against the budget. The timer turns amber at 80% and red when over. **Run of show** lists each segment's time, and the header shows a total clock from when you went Live. Time counts only while a segment's tab is on screen and adds up across visits. **Reset demo** zeroes it. On the Google Slides segment, the console shows the deck's speaker notes instead of talking points, with the segment timer beside the slide number.
+In the console, the **Now** card shows the current segment's talking points and its timer against the budget. The timer turns amber at 80% and red when over. **Run of show** shows the segment you're on and the next one. Time counts only while a segment's tab is on screen and adds up across visits.
+
+**Show clock.** Going Live doesn't start the clock, because you may be sharing for a while before the meeting really begins. Press **▶ Start clock** in the console header (or the Deck's *Show clock* key, which flashes while you're Live and it hasn't started). That zeroes the show clock, every segment timer and the topic *shown* marks, and starts timing from that moment. To restart it once it's running, click it twice in the console or hold the Deck key for 1s. **Reset demo** stops it.
+
+**Close tab to end a share.** If you share a single tab in Google Meet, closing that tab ends the share. So on a slides segment, the Deck's **Close tab** key reads *END SHARE*. Hold it ½s to close the tab and land on the next segment, ready to share that. On the Google Slides segment, the console shows the deck's speaker notes instead of talking points, with the segment timer beside the slide number.
 
 ## Demo tabs and Reset demo
 
@@ -98,7 +104,7 @@ Other windows and the console are never touched. An empty list never closes anyt
 
 Open it from the popup (**Console**), from Settings, or with the `open-console` shortcut. Drag the window to your second monitor; it reopens in the same place next time, and opening it again just focuses it.
 
-It shows everything live: Rehearse/Live, camera state (with a countdown to the next blink), the current topic with the full list of 10 and a marker on the next one, each veil (HIDDEN or SHOWN), and the Slack post. Each item shows its shortcut, with a dashed outline if it isn't bound yet. Clicking anything triggers it, so the console doubles as a backup for the Stream Deck.
+It shows everything live: Rehearse/Live, the segment you're on with its timer, planned topics and talking points, camera state (with a countdown to the next blink), the run of show (just the segment you're on and the next one, with Next tab and Close tab), each veil (HIDDEN or SHOWN), and the Slack post. The full topic list is folded away under *All topics* for anything you didn't plan. Each item shows its shortcut, with a dashed outline if it isn't bound yet. Clicking anything triggers it, so the console doubles as a backup for the Stream Deck.
 
 ## Slides and speaker notes
 
@@ -126,7 +132,7 @@ The badge number is how many veils are on, so you know the state before going li
 |---|---|
 | ⌃⇧1 / ⌃⇧2 / ⌃⇧3 | Toggle veil in slot 1 / 2 / 3 |
 | ⌃⇧0 | Reset (all veils on) |
-| unbound | Veils 4–6, Rehearse/Live, start picker, camera on/blink/size, topic next/prev/toggle, topics 1–10 |
+| unbound | Veils 4–6, Rehearse/Live, start picker, camera on/blink/size, topic next/prev/toggle, topics 1–10, close tab |
 | bind to ⌃⇧4 | Slack notification show / dismiss |
 
 Chrome only allows 4 suggested keys per extension. Bind the rest in `chrome://extensions/shortcuts`. Slot numbers are the veil order on the settings page.

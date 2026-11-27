@@ -185,6 +185,40 @@
       "PropertyInspectorPath": "ui/inspector.html"
     },
     {
+      "Name": "Show clock",
+      "UUID": "com.demodirector.streamdeck.clock",
+      "Icon": "imgs/actions/clock",
+      "Tooltip": "Tap: start the show clock (zeroes the segment timers). Once running, hold 1s to restart it",
+      "States": [
+        {
+          "Image": "imgs/actions/clock-key",
+          "ShowTitle": false
+        }
+      ],
+      "Controllers": [
+        "Keypad"
+      ],
+      "UserTitleEnabled": false,
+      "SupportedInMultiActions": true
+    },
+    {
+      "Name": "Close tab",
+      "UUID": "com.demodirector.streamdeck.closetab",
+      "Icon": "imgs/actions/closetab",
+      "Tooltip": "Hold ½s: close the Chrome tab on screen and go to the next segment",
+      "States": [
+        {
+          "Image": "imgs/actions/closetab-key",
+          "ShowTitle": false
+        }
+      ],
+      "Controllers": [
+        "Keypad"
+      ],
+      "UserTitleEnabled": false,
+      "SupportedInMultiActions": true
+    },
+    {
       "Name": "Slide",
       "UUID": "com.demodirector.streamdeck.slide",
       "Icon": "imgs/actions/slide",

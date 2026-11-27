@@ -72,13 +72,14 @@
     .sizes span.on { background: var(--text); color: var(--bg); }
 
     /* Topics */
-    .now { text-align: left; width: 100%; padding: 12px 14px; border-radius: 12px; background: var(--card2); border: 1px solid var(--line); display: flex; gap: 12px; align-items: center; }
-    .now.on { border-color: var(--accent); }
-    .now .ico { width: 44px; height: 44px; border-radius: 10px; display: grid; place-items: center; background: var(--bg); color: var(--muted); flex: none; }
-    .now.on .ico { background: var(--accent); color: #fff; }
-    .now .k { font-size: 12px; color: var(--muted); letter-spacing: .1em; text-transform: uppercase; font-weight: 700; }
-    .now .t { font-size: 22px; font-weight: 800; line-height: 1.2; }
-    .topics { display: grid; gap: 4px; }
+    .topics { display: grid; gap: 4px; margin-top: 8px; }
+    .alltopics summary { cursor: pointer; list-style: none; }
+    .alltopics summary::-webkit-details-marker { display: none; }
+    .alltopics summary h2 { margin: 0; }
+    .alltopics summary h2::before { content: "▸ "; color: var(--muted); }
+    .alltopics[open] summary h2::before { content: "▾ "; }
+    .tabi .tag { font-size: 11px; font-weight: 800; letter-spacing: .1em; color: var(--muted); }
+    .tabi.active .tag { color: var(--accent); }
     .topic { display: grid; grid-template-columns: 26px 22px 1fr auto; gap: 10px; align-items: center; padding: 6px 10px; border-radius: 10px;
       border: 1px solid transparent; background: transparent; text-align: left; color: var(--muted); }
     .topic:hover { background: var(--card2); }
@@ -128,7 +129,9 @@
     .tools button { padding: 6px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--card2); font-weight: 700; }
     .warn-box { padding: 10px 12px; border-radius: 10px; border: 1px solid var(--warn); color: var(--warn); font-size: 13px; }
     .clock { font: 800 18px ui-monospace, SFMono-Regular, Menlo, monospace; padding: 6px 12px; border-radius: 10px; background: var(--card2); font-variant-numeric: tabular-nums; }
-    .clock.off { font: 600 12px -apple-system, system-ui, sans-serif; color: var(--muted); }
+    .clock { border: 1px solid var(--line); color: var(--text); cursor: pointer; }
+    .clock.off { font: 700 14px -apple-system, system-ui, sans-serif; background: var(--accent); border-color: var(--accent); color: #fff; }
+    .clock.confirm { font: 700 14px -apple-system, system-ui, sans-serif; border-color: var(--warn); color: var(--warn); }
     .nowseg { grid-column: 1 / -1; background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 14px 16px; display: grid; gap: 10px; }
     .nowseg.on { border-color: var(--accent); }
     .nowhead { display: flex; justify-content: space-between; gap: 16px; align-items: center; flex-wrap: wrap; }
@@ -147,6 +150,15 @@
     .segnotes p { margin: 0 0 6px; }
     .segnotes b { color: #fff; }
     .segnotes mark { background: rgba(253,176,34,.25); color: var(--warn); border-radius: 4px; padding: 0 4px; }
+    .segtopics { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 8px; }
+    .segtopics:empty { display: none; }
+    .stp { display: flex; gap: 6px; align-items: center; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line); background: var(--card2); color: var(--text); font-size: 14px; }
+    .stp .at { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 12px; }
+    .stp.due { border-color: var(--accent); animation: stpflash 1s steps(1) infinite; }
+    .stp.onair { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .stp.onair .at { color: #fff; }
+    .stp.done { opacity: .5; }
+    @keyframes stpflash { 50% { background: var(--accent); color: #fff; } }
     .segnotes.empty { color: var(--muted); font-size: 14px; font-style: italic; }
     .segt { font: 700 15px ui-monospace, Menlo, monospace; color: var(--muted); margin-left: auto; font-variant-numeric: tabular-nums; }
     .pill.warnt { background: var(--warn); color: #111; } .pill.overt { background: var(--live); color: #fff; }
@@ -171,7 +183,7 @@
     <button class="mode" id="mode" title="Switch Rehearse / Live"><span class="dot"></span><span id="modeText">REHEARSE</span></button>
     <kbd data-cmd="toggle-mode"></kbd>
     <span class="modepill" id="viewPill">DEMO MODE</span>
-    <span class="clock" id="clock" title="Total demo time since you went Live (Reset demo zeroes it)"></span>
+    <button class="clock" id="clock" title="Show clock. Start it when the meeting really begins: it zeroes the segment timers too."></button><kbd data-cmd="clock-start"></kbd>
     <span class="spacer"></span>
     <span class="conn" id="conn" title="Stream Deck plugin arrives in phase 4"><i></i><span>Stream Deck: not connected</span></span>
     <button class="reset" id="reset">Reset demo <kbd data-cmd="reset"></kbd></button>
@@ -212,6 +224,7 @@
         <div><div class="k" id="nsKicker"></div><div class="t" id="nsLabel"></div></div>
         <div class="timer"><span class="big" id="nsTime"></span><div class="bar"><i id="nsBar"></i></div></div>
       </div>
+      <div class="segtopics" id="nsTopics"></div>
       <div class="segnotes" id="nsNotes"></div>
     </section>
     <div class="col">
@@ -246,11 +259,11 @@
 
     <div class="col">
     <section>
-      <h2>Run of show <span><kbd data-cmd="tab-prev"></kbd> prev · next <kbd data-cmd="tab-next"></kbd></span></h2>
+      <h2>Run of show <span id="runCount"></span></h2>
       <div class="tablist" id="tablist"></div>
       <div class="row" style="grid-template-columns: 1fr 1fr">
-        <button class="btn" id="tabPrev"><span>◀ Prev tab</span></button>
-        <button class="btn" id="tabNext"><span>Next tab ▶</span></button>
+        <button class="btn" id="tabNext"><span>Next tab ▶</span><kbd data-cmd="tab-next"></kbd></button>
+        <button class="btn" id="tabClose" title="Close the tab on screen and go to the next segment"><span>Close tab ✕</span><kbd data-cmd="tab-close"></kbd></button>
       </div>
       <div class="tip">
         <span>Chrome's own keys: <b>⌃Tab</b> next · <b>⌃⇧Tab</b> previous · <b>⌘1–8</b> jump to tab N</span>
@@ -259,14 +272,11 @@
     </section>
 
     <section>
-      <h2>Topic <span><kbd data-cmd="topic-prev"></kbd> prev · next <kbd data-cmd="topic-next"></kbd></span></h2>
-      <button class="now" id="now" title="Show / hide current topic"></button>
-      <div class="row">
-        <button class="btn" id="prev"><span>◀ Prev</span></button>
-        <button class="btn" id="toggle"><span>Show / hide</span><kbd data-cmd="topic-toggle"></kbd></button>
-        <button class="btn" id="next"><span>Next ▶</span></button>
-      </div>
-      <div class="topics" id="topics"></div>
+      <details class="alltopics">
+        <summary><h2>All topics <span id="topicNow"></span></h2></summary>
+        <div class="tip">This segment's topics are at the top, next to the talking points. Use this list for one you didn't plan.</div>
+        <div class="topics" id="topics"></div>
+      </details>
     </section>
     </div>
   </main>

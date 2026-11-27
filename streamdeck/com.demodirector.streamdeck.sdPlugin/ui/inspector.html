@@ -22,8 +22,10 @@
       <option value="next">Next topic</option>
       <option value="prev">Previous topic</option>
       <option value="toggle">Show / hide current</option>
+      <option value="segment">Segment topic (the Nth one planned for the segment you're in)</option>
       <option value="show">Show a specific step</option>
     </select></div>
+  <div class="row" data-for="topic" data-when="segment" hidden><label for="tslot">Which</label><select id="tslot" data-key="slot"></select></div>
   <div class="row" data-for="topic" data-when="show" hidden><label for="index">Step</label><select id="index" data-key="index"></select></div>
 
   <div class="row" data-for="tab slide" hidden><label for="dir">Direction</label>

@@ -34,11 +34,13 @@ Prefer a one-off installer? `cd streamdeck && npm install && npm run pack` makes
 | **Camera** | Bubble on/off | ON (green) / OFF, plus size |
 | **Blink** | Blink mode on/off | Countdown: "Hides 22s" / "Back 8s" |
 | **Camera size** | S → M → L | Current size (or the dragged px size) |
-| **Topic** | Next / Previous / Show-hide current / Show step N (inspector) | Step number and title; ON AIR when shown |
+| **Show clock** | Tap: start the show clock (zeroes segment timers). Running: hold 1s to restart | *Start*, flashing while Live and not started; then the show time |
+| **Topic** | Segment topic 1–5 / Next / Previous / Show-hide current / Show step N (inspector) | Segment topic: its title, a countdown to its planned time, flashing SHOW NOW when due, ON AIR, then SHOWN. Others: step number and title; ON AIR when shown |
 | **Slack post** | Show / dismiss | SHOWING (purple) |
 | **Live / Rehearse** | Toggle mode | LIVE (red) / Rehearse |
 | **Reset demo** | **Hold ~1 second.** A tap is ignored, so a stray press can't close your tabs. | HOLD… while held, then ✓ |
 | **Tab** | Next / previous demo tab (inspector) | The target tab's name, plus the current segment's time against its budget (amber at 80%, red when over) |
+| **Close tab** | Hold ½s: close the Chrome tab on screen (reads END SHARE on a slides segment: closing a shared tab ends a Meet share) and jump to the next segment (never the last tab in the window) | The segment you're closing and where you'll land |
 | **Slide** | Next / previous Google Slides slide (inspector) | |
 | **Console** | Open the Director console | |
 
@@ -54,8 +56,8 @@ It's built for the **Stream Deck MK.2**. To regenerate it (e.g. after changing t
 
 | | | | | |
 |---|---|---|---|---|
-| Camera | Blink | Camera size | Live / Rehearse | Reset demo (hold) |
-| Topic: Previous | Topic: Show/hide | Topic: Next | Slack post | Console |
+| Camera | Blink | Show clock | Live / Rehearse | Reset demo (hold) |
+| Segment topic 1 | Segment topic 2 | Segment topic 3 | Slack post | Close tab (hold) |
 | Veil 1 | Veil 2 | Veil 3 | Slide: Next | Tab: Next |
 
 Drag each action from the right-hand list onto a key. For Veil, Topic, Tab and Slide, pick the slot or direction in the inspector below the keys.

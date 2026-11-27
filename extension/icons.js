@@ -22,6 +22,8 @@
     eyeoff: '<path d="M10.6 5.1A10.8 10.8 0 0 1 12 5c6.4 0 10 7 10 7a18 18 0 0 1-2.9 3.9M6.6 6.6C3.9 8.4 2 12 2 12s3.6 7 10 7c1.8 0 3.4-.5 4.8-1.3"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2M3 3l18 18"/>',
     prev: '<path d="M15 5l-7 7 7 7"/>',
     next: '<path d="M9 5l7 7-7 7"/>',
+    clock: '<circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2.5M9 2h6"/>',
+    close: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9.5 9.5l5 5M14.5 9.5l-5 5"/>',
     reset: '<path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/>',
     monitor: '<rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/>',
     slides: '<rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M12 16v4M8 20h8M7 8h6M7 11h10"/>',
@@ -33,6 +35,6 @@
   const svg = (name, size = 24) =>
     `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${P[name] || P.star}</svg>`;
   // Topic icon choices exclude the Stream Deck-only glyphs.
-  const KEY_ONLY = ['eye', 'eyeoff', 'prev', 'next', 'reset', 'monitor', 'slides', 'tabs', 'maximize', 'live', 'blink'];
+  const KEY_ONLY = ['eye', 'eyeoff', 'prev', 'next', 'reset', 'monitor', 'slides', 'tabs', 'maximize', 'live', 'blink', 'close', 'clock'];
   root.DDIcons = { names: Object.keys(P).filter((n) => !KEY_ONLY.includes(n)), svg, paths: P };
 })(globalThis);

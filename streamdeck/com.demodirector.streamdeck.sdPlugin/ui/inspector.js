@@ -4,7 +4,7 @@ let ws;
 let ctx;
 let actionUUID;
 let settings = {};
-const DEFAULTS = { veil: { slot: 1 }, topic: { mode: 'next', index: 1 }, tab: { dir: 'next' }, slide: { dir: 'next' } };
+const DEFAULTS = { veil: { slot: 1 }, topic: { mode: 'next', index: 1, slot: 1 }, tab: { dir: 'next' }, slide: { dir: 'next' } };
 let kind = '';
 let opts = { veils: [], topics: [], connected: false };
 
@@ -32,6 +32,7 @@ function render() {
     $('#mode').value = s.mode;
     const topics = opts.topics.length ? opts.topics : Array.from({ length: 10 }, (_, i) => ({ index: i + 1, title: '' }));
     fillSelect($('#index'), topics.map((t) => [t.index, `${t.index} · ${t.title || 'Step ' + t.index}`]), s.index);
+    fillSelect($('#tslot'), [1, 2, 3, 4, 5].map((n) => [n, `Segment topic ${n}`]), s.slot);
   }
   if (kind === 'tab' || kind === 'slide') $('#dir').value = s.dir;
   const note = $('#note');
@@ -39,7 +40,9 @@ function render() {
   note.textContent = opts.connected
     ? kind === 'veil'
       ? 'Veil slots follow the order in the extension’s Settings → Veils.'
-      : ''
+      : kind === 'topic' && s.mode === 'segment'
+        ? 'Shows the topic you planned in that position for the segment on screen, and lights up when its time comes. Plan them in the extension’s Settings → Segments.'
+        : ''
     : 'Chrome extension not connected: names will appear once it is.';
 }
 
