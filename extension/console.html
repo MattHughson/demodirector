@@ -140,6 +140,7 @@
     .pausebox .pp { color: var(--muted); }
     .pausebox.behind .pp { color: var(--live, #f04438); font-weight: 700; }
     .pauserow { padding: 6px 10px; border-radius: 10px; border: 1px dashed var(--warn); color: var(--warn); font-size: 13px; font-weight: 600; }
+    header .meet { font-weight: 700; }
     .pauserow.now { border-style: solid; background: rgba(253,176,34,.08); font-size: 14px; }
     .pauserow .tag { font-size: 11px; font-weight: 800; letter-spacing: .1em; }
     .nowseg.pausing { border-color: var(--warn); }
@@ -198,6 +199,7 @@
     <span class="modepill" id="viewPill">DEMO MODE</span>
     <button class="clock" id="clock"></button><button class="clockrs" id="clockRestart" hidden title="Restart the show clock from 0:00 (click twice)">↺</button><kbd data-cmd="clock-start"></kbd>
     <span class="spacer"></span>
+    <button class="meet" id="meet" title="Start an instant Google Meet in its own window (Reset demo never closes it). Opens your call again if it's already up.">New Meet</button>
     <span class="conn" id="conn" title="Stream Deck plugin arrives in phase 4"><i></i><span>Stream Deck: not connected</span></span>
     <button class="reset" id="reset">Reset demo <kbd data-cmd="reset"></kbd></button>
   </header>

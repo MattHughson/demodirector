@@ -434,9 +434,16 @@ const bump = (d) => {
   applyScale();
 };
 
+// Same window the service worker treats as the demo window: never one that only holds Google Meet.
+const MEET_URL = /^https:\/\/(meet\.google\.com|meet\.new)(\/|$)/;
+const isMeetWin = (w) => !!w?.tabs?.length && w.tabs.every((t) => MEET_URL.test(t.url || t.pendingUrl || ''));
 async function activeDemoTab() {
   try {
-    const win = await chrome.windows.getLastFocused({ windowTypes: ['normal'] });
+    let win = await chrome.windows.getLastFocused({ windowTypes: ['normal'], populate: true });
+    if (isMeetWin(win)) {
+      const { demoWindowId } = await chrome.storage.session.get('demoWindowId');
+      win = (demoWindowId && (await chrome.windows.get(demoWindowId).catch(() => null))) || win;
+    }
     const [tab] = await chrome.tabs.query({ windowId: win.id, active: true });
     return tab || null;
   } catch {
@@ -546,6 +553,7 @@ chrome.windows.onFocusChanged.addListener(refreshTabs);
 
 $('#mode').onclick = () => send({ type: 'mode.toggle' });
 $('#reset').onclick = () => send({ type: 'reset' });
+$('#meet').onclick = () => send({ type: 'meet.open' });
 $('#camOn').onclick = () => send({ type: 'camera.toggle' });
 $('#camBlink').onclick = () => send({ type: 'camera.blink' });
 $('#camSize').onclick = () => send({ type: 'camera.size' });

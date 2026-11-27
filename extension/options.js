@@ -173,6 +173,7 @@ function renderSettings(state) {
   pv.style.setProperty('--ring-w', `${Number(s.camera.ringWidth ?? 3)}px`);
   renderTopics(state);
   renderTabs(state);
+  renderRuns(); // the run in progress keeps counting
   $('#bridgeStatus').textContent = state.bridge?.connected ? '● Connected to the Stream Deck plugin' : '○ Not connected. Is the Stream Deck app running with the Demo Director plugin installed?';
   $('#bridgeStatus').style.color = state.bridge?.connected ? 'var(--on)' : '';
   renderAvatar();
@@ -393,6 +394,7 @@ function renderTabs(state) {
   let arcNo = 1;
   let arcMin = 0;
   let planTo = 0;
+  let arcIds = [];
   list.forEach((t, i) => {
     if (t.kind === 'pause') {
       const row = document.createElement('div');
@@ -403,8 +405,12 @@ function renderTabs(state) {
         <div class="pnotes"><span>Talking points during the pause <em>· shown on the console until you press Resume</em></span></div>`;
       planTo += arcMin;
       row.querySelector('.muted').textContent = `End of arc ${arcNo}${arcMin ? ` · arc planned ${fmtMin(arcMin)} · ${fmtMin(planTo)} in total` : ''}. Moving past it pauses the show clock.`;
+      const arcAct = document.createElement('span');
+      row.querySelector('.muted').append(' ', arcAct);
+      showActual(arcAct, arcIds, arcMin);
       arcNo++;
       arcMin = 0;
+      arcIds = [];
       const pl = row.querySelector('input');
       pl.value = t.label || '';
       pl.onchange = () => saveTabs(current.settings.tabs.map((x, k) => (k !== i ? x : { ...x, label: pl.value.trim() })));
@@ -429,6 +435,7 @@ function renderTabs(state) {
     }
     segNo++;
     arcMin += Number(t.minutes) || 0;
+    if (validUrl(t.url)) arcIds.push(t.id || `u:${t.url}`);
     const card = document.createElement('div');
     card.className = 'seg';
     card.innerHTML = `
@@ -449,6 +456,8 @@ function renderTabs(state) {
         </select></label>
         <label title="Hold the camera hidden for this long after arriving, then fade it in">Camera delay (s) <input type="number" name="cdelay" min="0" max="600" step="0.5" placeholder="0"></label>
         <label>Time budget <input type="text" name="minutes" placeholder="m:ss" inputmode="decimal"></label>
+        <span class="actual"></span>
+        <label title="Flag it in the run review if the Slack post wasn't shown during this segment">Slack post <span><input type="checkbox" name="slackp"> planned here</span></label>
         <span class="campos"></span>
       </div>
       <div class="segtopics"><span>Topics in this segment <em>· Stream Deck keys Topic 1–3 follow this order and light up at the time you give (time into the segment, m:ss)</em></span><div class="list"></div><button data-tadd>+ Add topic</button></div>
@@ -557,6 +566,10 @@ function renderTabs(state) {
       update({ camera: { ...(current.settings.tabs[i].camera || {}), mode: e.target.value } });
     };
     $c('[name=minutes]').onchange = (e) => update({ minutes: parseMin(e.target.value) });
+    const slackp = $c('[name=slackp]');
+    slackp.checked = !!t.slack;
+    slackp.onchange = () => update({ slack: slackp.checked });
+    showActual($c('.actual'), [t.id || `u:${t.url}`], Number(t.minutes) || 0);
     const clear = $c('[data-clearpos]');
     if (clear) clear.onclick = () => {
       const { pos: _p, size: _s, ...rest } = current.settings.tabs[i].camera || {};
@@ -673,3 +686,210 @@ $('#deckClear').onclick = async () => {
 };
 chrome.storage.onChanged.addListener((c, area) => area === 'local' && c.deck && renderDeck());
 renderDeck();
+
+// ======================= runs (review) =======================
+// Every show-clock run, saved by the service worker. Budgets are never changed
+// from here: the segment list just shows the last run and the average beside them.
+
+let runs = [];
+const fmtMs = (ms) => {
+  const t = Math.max(0, Math.round(ms / 1000));
+  const h = Math.floor(t / 3600);
+  const m = Math.floor((t % 3600) / 60);
+  const ss = String(t % 60).padStart(2, '0');
+  return h ? `${h}:${String(m).padStart(2, '0')}:${ss}` : `${m}:${ss}`;
+};
+const isOpenRun = (r) => !r.endedAt && current?.liveStart && r.liveStart === current.liveStart;
+
+// Time per segment in a run; the run in progress counts up to now.
+function runSegTime(r) {
+  if (!isOpenRun(r)) return r.segTime || {};
+  const out = { ...(current.segTime || {}) };
+  const c = current.segCurrent;
+  if (c && !c.paused) out[c.id] = (out[c.id] || 0) + Math.max(0, Date.now() - c.since);
+  return out;
+}
+const runShowMs = (r) =>
+  isOpenRun(r) ? (current.clockPausedAt || Date.now()) - current.liveStart - (current.clockPausedMs || 0) : r.showMs || 0;
+
+// "last 4:12 · avg 4:05 (3 runs)" for a segment (one id) or an arc (several).
+function showActual(el, ids, budgetMin) {
+  const sum = (r) => ids.reduce((n, id) => n + (runSegTime(r)[id] || 0), 0);
+  const vals = runs.map(sum).filter((v) => v > 0);
+  el.className = 'actual';
+  if (!vals.length) {
+    el.textContent = '';
+    return;
+  }
+  const last = vals[0];
+  const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
+  el.textContent = `last run ${fmtMs(last)}${vals.length > 1 ? ` · avg ${fmtMs(avg)} (${vals.length} runs)` : ''}`;
+  const budget = budgetMin * 60000;
+  if (budget) el.classList.add(last > budget ? 'over' : 'under');
+  el.title = 'From your saved runs (Settings → Runs). The most recent run that reached it, and the average over every run that did.';
+}
+
+const tagOf = (r) => (r.modes || [r.mode]).map((m) => (m === 'live' ? 'LIVE' : 'REHEARSE')).join(' + ');
+const when = (w) => new Date(w).toLocaleString(undefined, { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+const clockAt = (w) => new Date(w).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+function describe(e) {
+  switch (e.k) {
+    case 'segment': return e.id ? `Segment → ${e.label || e.id}` : 'Left the demo tabs';
+    case 'pause': return e.arc ? `⏸ Arc pause (${e.label})` : '⏸ Clock paused';
+    case 'resume': return '▶ Resumed';
+    case 'topic': return `Topic ${e.n} shown: ${e.title}${e.seg ? ` (${fmtMs(e.segT)} into the segment)` : ''}`;
+    case 'topic-hide': return `Topic ${e.n} hidden${e.auto ? ' (auto)' : ''}`;
+    case 'slack': return e.on ? `Slack post shown${e.seg ? ` (${fmtMs(e.segT)} into the segment)` : ''}` : 'Slack post dismissed';
+    case 'veil': return `Veil "${e.name}" ${e.hidden ? 'hidden' : 'revealed'}`;
+    case 'camera': return `Camera ${e.on ? (e.blink ? 'on + blink' : 'on') : 'off'}`;
+    case 'mode': return `Mode → ${e.mode === 'live' ? 'Live' : 'Rehearse'}`;
+    default: return e.k;
+  }
+}
+
+// Which runs / timelines you've opened or closed, so re-renders keep them as you left them.
+const runOpen = new Map();
+const tlOpen = new Set();
+function renderRuns() {
+  const root = $('#runs');
+  if (!root) return;
+  root.replaceChildren();
+  if (!runs.length) {
+    root.innerHTML = '<p class="muted" style="margin:0">No runs yet. Press Start clock in the console (or on the Deck) to record one.</p>';
+    return;
+  }
+  runs.forEach((r, ri) => {
+    const d = document.createElement('details');
+    d.className = 'run';
+    d.open = runOpen.has(r.id) ? runOpen.get(r.id) : ri === 0;
+    d.ontoggle = () => runOpen.set(r.id, d.open);
+    const segPlan = (r.plan || []).filter((p) => !p.pause);
+    const planMs = segPlan.reduce((n, p) => n + p.minutes * 60000, 0);
+    const show = runShowMs(r);
+    const sum = document.createElement('summary');
+    const status = isOpenRun(r) ? 'in progress' : r.endedAt ? `ended ${clockAt(r.endedAt)}` : 'not finished';
+    sum.innerHTML = `<span class="tag"></span><span></span><b></b><span class="muted"></span>`;
+    sum.children[0].textContent = tagOf(r);
+    sum.children[0].classList.toggle('live', (r.modes || [r.mode]).includes('live'));
+    sum.children[1].textContent = when(r.startedAt);
+    sum.children[2].textContent = fmtMs(show) + (planMs ? ` / plan ${fmtMs(planMs)}` : '');
+    sum.children[3].textContent = status;
+    d.append(sum);
+
+    const body = document.createElement('div');
+    body.className = 'body';
+    const segT = runSegTime(r);
+    const evs = r.events || [];
+    const missed = [];
+    const table = document.createElement('table');
+    table.innerHTML = '<tr><th>#</th><th>Segment</th><th>Budget</th><th>Actual</th><th>±</th><th>Topics</th><th>Slack post</th></tr>';
+    let n = 0;
+    let arc = 1;
+    let arcIds = [];
+    let arcPlan = 0;
+    for (const p of r.plan || []) {
+      const tr = table.insertRow();
+      if (p.pause) {
+        const act = arcIds.reduce((a, id) => a + (segT[id] || 0), 0);
+        tr.className = 'prow';
+        const c = tr.insertCell();
+        c.colSpan = 7;
+        c.textContent = `⏸ ${p.label} · end of arc ${arc}: ${fmtMs(act)}${arcPlan ? ` / plan ${fmtMs(arcPlan)} (${act > arcPlan ? '+' : '−'}${fmtMs(Math.abs(act - arcPlan))})` : ''}`;
+        arc++;
+        arcIds = [];
+        arcPlan = 0;
+        continue;
+      }
+      n++;
+      arcIds.push(p.id);
+      arcPlan += p.minutes * 60000;
+      const act = segT[p.id] || 0;
+      const budget = p.minutes * 60000;
+      const reached = evs.some((e) => e.k === 'segment' && e.id === p.id) || act > 0;
+      tr.insertCell().textContent = n;
+      tr.insertCell().textContent = p.label;
+      tr.insertCell().textContent = budget ? fmtMs(budget) : '–';
+      tr.insertCell().textContent = reached ? fmtMs(act) : 'not reached';
+      const dc = tr.insertCell();
+      if (budget && reached) {
+        dc.textContent = `${act > budget ? '+' : '−'}${fmtMs(Math.abs(act - budget))}`;
+        dc.className = act > budget ? 'miss' : 'ok';
+      }
+      // Topics: planned ones (shown, and when, or missed), then any extra shown here.
+      const tc = tr.insertCell();
+      const shownHere = evs.filter((e) => e.k === 'topic' && e.seg === p.id);
+      const lines = [];
+      for (const x of p.topics || []) {
+        const hit = shownHere.find((e) => e.n === x.n);
+        if (hit) lines.push([`✓ ${x.title} at ${fmtMs(hit.segT)}${Number.isFinite(x.at) ? ` (plan ${fmtMs(x.at * 1000)})` : ''}`, 'ok']);
+        else {
+          lines.push([`✗ ${x.title}: missed`, 'miss']);
+          if (reached) missed.push(`topic "${x.title}" in ${p.label}`);
+        }
+      }
+      for (const e of shownHere) if (!(p.topics || []).some((x) => x.n === e.n)) lines.push([`+ ${e.title} at ${fmtMs(e.segT)} (not planned)`, '']);
+      lines.forEach(([t, c]) => {
+        const dv = document.createElement('div');
+        dv.textContent = t;
+        if (c) dv.className = c;
+        tc.append(dv);
+      });
+      const sc = tr.insertCell();
+      const sl = evs.find((e) => e.k === 'slack' && e.on && e.seg === p.id);
+      if (sl) {
+        sc.textContent = `✓ at ${fmtMs(sl.segT)}${p.slack ? '' : ' (not planned)'}`;
+        sc.className = 'ok';
+      } else if (p.slack) {
+        sc.textContent = '✗ missed';
+        sc.className = 'miss';
+        if (reached) missed.push(`Slack post in ${p.label}`);
+      }
+    }
+    if (missed.length) {
+      const m = document.createElement('div');
+      m.className = 'missed';
+      m.textContent = `Missed: ${missed.join(' · ')}`;
+      body.append(m);
+    }
+    if (segPlan.length) body.append(table);
+
+    const tl = document.createElement('details');
+    tl.className = 'timeline';
+    tl.innerHTML = `<summary>Timeline (${evs.length} events)</summary><ol></ol>`;
+    tl.open = tlOpen.has(r.id);
+    tl.ontoggle = () => (tl.open ? tlOpen.add(r.id) : tlOpen.delete(r.id));
+    for (const e of evs) {
+      const li = document.createElement('li');
+      li.textContent = `${clockAt(e.w)} · ${fmtMs(e.t)} · ${describe(e)}`;
+      tl.querySelector('ol').append(li);
+    }
+    body.append(tl);
+
+    const bar = document.createElement('div');
+    bar.className = 'bar';
+    const del = document.createElement('button');
+    del.className = 'danger';
+    del.textContent = isOpenRun(r) ? 'Delete (still recording)' : 'Delete run';
+    del.onclick = () => send({ type: 'run.delete', id: r.id });
+    bar.append(del);
+    body.append(bar);
+    d.append(body);
+    root.append(d);
+  });
+}
+
+chrome.storage.local.get('runs').then(({ runs: r }) => {
+  runs = r || [];
+  renderRuns();
+  if (current) renderTabs(current);
+});
+chrome.storage.onChanged.addListener((c, area) => {
+  if (area !== 'local' || !c.runs) return;
+  runs = c.runs.newValue || [];
+  renderRuns();
+  if (current) renderTabs(current);
+});
+$('#runsClear').onclick = () => {
+  if (confirm('Delete every finished run? The run in progress (if any) is kept.')) send({ type: 'run.delete', id: '*' });
+};

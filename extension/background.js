@@ -132,14 +132,32 @@ function tabMatches(tabUrl, cfgUrl) {
   }
 }
 
-// The demo window is the last normal browser window you used (never the console popup).
+// The demo window is the last normal browser window you used (never the console
+// popup), skipping a window that only holds Google Meet: clicking Share there
+// mustn't make End share or Next tab act on the call.
+const MEET_URL = /^https:\/\/(meet\.google\.com|meet\.new)(\/|$)/;
+const isMeetWin = (w) => !!w?.tabs?.length && w.tabs.every((t) => MEET_URL.test(t.url || t.pendingUrl || ''));
+
 async function demoWindow() {
   try {
-    return await chrome.windows.getLastFocused({ windowTypes: ['normal'] });
+    const w = await chrome.windows.getLastFocused({ windowTypes: ['normal'], populate: true });
+    if (!isMeetWin(w)) return w;
+    const { demoWindowId } = await chrome.storage.session.get('demoWindowId');
+    const kept = demoWindowId && (await chrome.windows.get(demoWindowId, { populate: true }).catch(() => null));
+    if (kept && !isMeetWin(kept)) return kept;
+    const all = await chrome.windows.getAll({ windowTypes: ['normal'], populate: true });
+    return all.find((x) => !isMeetWin(x)) || w;
   } catch {
     return null;
   }
 }
+
+// Remember the last non-Meet window you used, for when the Meet window has focus.
+chrome.windows.onFocusChanged.addListener(async (id) => {
+  if (id < 0) return;
+  const w = await chrome.windows.get(id, { populate: true }).catch(() => null);
+  if (w?.type === 'normal' && !isMeetWin(w)) chrome.storage.session.set({ demoWindowId: id });
+});
 
 const validUrl = (u) => /^https?:\/\/\S+$/.test(u || '');
 // Chrome split view (Chrome 140+ reports it; 155+ can create one).
@@ -504,7 +522,118 @@ async function loadState() {
 }
 
 const saveVeils = (veils) => chrome.storage.local.set({ veils });
-const saveLive = (patch) => chrome.storage.session.set(patch);
+// Every live-state change goes through here, one at a time, so the run log
+// sees each change (from the Deck, console, hotkeys or timers) as a before/after pair.
+let liveChain = Promise.resolve();
+function saveLive(patch) {
+  const job = liveChain.then(async () => {
+    const before = await loadState();
+    await chrome.storage.session.set(patch);
+    await recordRun(before, await loadState()).catch((e) => console.warn('Demo Director: run log', e));
+  });
+  liveChain = job.catch(() => {});
+  return job;
+}
+
+// ---------- runs: each show-clock run, kept for review in Settings ----------
+// runs (chrome.storage.local), newest first:
+//   { id, liveStart, startedAt, endedAt, mode, modes[], plan[], segTime{}, showMs, events[] }
+//   plan: the run of show as it was at Start clock (segments with budgets/topics, and pauses)
+//   events: { t: show-clock ms, w: wall-clock ms, k: kind, … }
+
+const RUNS_MAX = 30;
+const showMsOf = (s, now) => (s.liveStart ? (s.clockPausedAt || now) - s.liveStart - (s.clockPausedMs || 0) : 0);
+
+function planOf(settings) {
+  const topics = settings.topics;
+  return settings.tabs
+    .filter((t) => isPause(t) || validUrl(t.url))
+    .map((t) =>
+      isPause(t)
+        ? { pause: true, id: t.id, label: t.label || 'Pause' }
+        : {
+            id: segId(t),
+            label: t.label || t.url,
+            minutes: Number(t.minutes) || 0,
+            slack: !!t.slack,
+            topics: segTopics(t, topics.length).map((x) => ({ ...x, title: topics[x.n - 1]?.title || `Topic ${x.n}` })),
+          }
+    );
+}
+
+const segLabel = (settings, id) => {
+  const t = id && configuredTabs(settings).find((x) => segId(x) === id);
+  return t ? t.label || t.url : null;
+};
+
+// What changed between two states, as run events.
+function runEvents(a, b, now) {
+  const ev = [];
+  const seg = b.segCurrent?.id || null;
+  const segT = seg ? foldSeg(b, now)[seg] || 0 : 0; // time into the segment
+  if (a.mode !== b.mode) ev.push({ k: 'mode', mode: b.mode });
+  if ((a.segCurrent?.id || null) !== seg) ev.push({ k: 'segment', id: seg, label: segLabel(b.settings, seg) });
+  if (!a.clockPausedAt && b.clockPausedAt) {
+    const brk = b.arcBreak && b.settings.tabs.find((t) => t.id === b.arcBreak);
+    ev.push({ k: 'pause', arc: !!brk, label: brk ? brk.label || 'Pause' : null });
+  }
+  if (a.clockPausedAt && !b.clockPausedAt) ev.push({ k: 'resume' });
+  const ta = a.topic;
+  const tb = b.topic;
+  if (tb.shown && (!ta.shown || ta.index !== tb.index || ta.shownAt !== tb.shownAt)) {
+    ev.push({ k: 'topic', n: tb.index, title: b.settings.topics[tb.index - 1]?.title || '', seg, segT });
+  }
+  if (ta.shown && !tb.shown) ev.push({ k: 'topic-hide', n: ta.index, auto: !!tb.cued });
+  if (a.slack.shown !== b.slack.shown) ev.push({ k: 'slack', on: b.slack.shown, seg, segT });
+  for (const v of b.veils) {
+    const was = a.active.includes(v.id);
+    const now_ = b.active.includes(v.id);
+    if (was !== now_) ev.push({ k: 'veil', name: v.name, hidden: now_, seg });
+  }
+  if (a.camera.on !== b.camera.on || a.camera.blink !== b.camera.blink) ev.push({ k: 'camera', on: b.camera.on, blink: b.camera.blink, seg });
+  return ev;
+}
+
+async function recordRun(a, b) {
+  const started = !!b.liveStart && b.liveStart !== a.liveStart;
+  const ended = !!a.liveStart && b.liveStart !== a.liveStart; // Reset, or Start again (a restart)
+  const { runs = [] } = await chrome.storage.local.get('runs');
+  const open = runs[0] && !runs[0].endedAt ? runs[0] : null;
+  const now = Date.now();
+  let changed = false;
+  if (open && (started || ended)) {
+    if (open.liveStart === a.liveStart) Object.assign(open, { segTime: foldSeg(a, now), showMs: showMsOf(a, now) });
+    open.endedAt = open.liveStart === a.liveStart ? now : open.lastAt || now; // left open by a browser restart
+    changed = true;
+  }
+  if (started) {
+    runs.unshift({
+      id: `run-${b.liveStart}`,
+      liveStart: b.liveStart,
+      startedAt: now,
+      endedAt: null,
+      lastAt: now,
+      mode: b.mode,
+      modes: [b.mode],
+      plan: planOf(b.settings),
+      segTime: {},
+      showMs: 0,
+      events: b.segCurrent ? [{ t: 0, w: now, k: 'segment', id: b.segCurrent.id, label: segLabel(b.settings, b.segCurrent.id) }] : [],
+    });
+    changed = true;
+  } else if (open && !ended && open.liveStart === b.liveStart) {
+    const ev = runEvents(a, b, now);
+    if (ev.length) {
+      const t = showMsOf(b, now);
+      open.events.push(...ev.map((e) => ({ t, w: now, ...e })));
+      if (!open.modes.includes(b.mode)) open.modes.push(b.mode);
+      Object.assign(open, { segTime: foldSeg(b, now), showMs: t, lastAt: now });
+      changed = true;
+    }
+  }
+  if (changed) await chrome.storage.local.set({ runs: runs.slice(0, RUNS_MAX) });
+}
+
 
 function slugify(name) {
   return (
@@ -937,6 +1066,30 @@ const handlers = {
   async 'slack.toggle'() {
     const { slack } = await loadState();
     return handlers[slack.shown ? 'slack.hide' : 'slack.show']();
+  },
+
+  // ----- runs (review) -----
+
+  async 'run.delete'({ id }) {
+    const { runs = [] } = await chrome.storage.local.get('runs');
+    await chrome.storage.local.set({ runs: id === '*' ? runs.filter((r) => !r.endedAt) : runs.filter((r) => r.id !== id) });
+    return { ok: true };
+  },
+
+  // ----- Google Meet -----
+
+  // An instant meeting in its own window, so Reset demo (which tidies the demo
+  // window's tabs) never closes your call. Reuses the window if it's still open.
+  async 'meet.open'() {
+    const { meetWindowId } = await chrome.storage.session.get('meetWindowId');
+    const was = meetWindowId && (await chrome.windows.get(meetWindowId, { populate: true }).catch(() => null));
+    if (was && isMeetWin(was)) {
+      await chrome.windows.update(was.id, { focused: true });
+      return { ok: true, reused: true };
+    }
+    const win = await chrome.windows.create({ url: 'https://meet.new', type: 'normal', focused: true });
+    await chrome.storage.session.set({ meetWindowId: win.id });
+    return { ok: true };
   },
 
   // ----- Director console (second screen) -----

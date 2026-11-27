@@ -60,6 +60,26 @@
     .segopts .campos { font-size: 12px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
     .segopts .campos button { padding: 3px 8px; font-size: 12px; }
     .seg .notes { padding-left: 32px; }
+    .segopts input[type=checkbox] { min-width: 0; }
+    .segopts .actual, .pausecard .actual { font-size: 12px; font-weight: 600; color: var(--muted); align-self: center; }
+    .actual.over { color: var(--live); }
+    .actual.under { color: var(--on); }
+    .runs { display: grid; gap: 8px; }
+    .run { border: 1px solid var(--line); border-radius: 10px; background: var(--bg); padding: 8px 12px; }
+    .run > summary { cursor: pointer; display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; font-size: 13px; }
+    .run > summary b { font-variant-numeric: tabular-nums; }
+    .run .tag { font-size: 11px; font-weight: 800; letter-spacing: .08em; padding: 1px 6px; border-radius: 6px; border: 1px solid var(--line); }
+    .run .tag.live { color: var(--live); border-color: var(--live); }
+    .run .body { display: grid; gap: 10px; margin-top: 10px; }
+    .run table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .run th, .run td { text-align: left; padding: 5px 6px; border-top: 1px solid var(--line); vertical-align: top; font-variant-numeric: tabular-nums; }
+    .run th { color: var(--muted); font-weight: 600; border-top: 0; }
+    .run tr.prow td { color: var(--warn, #b54708); font-weight: 600; }
+    .run .miss { color: var(--live); font-weight: 600; }
+    .run .ok { color: var(--on); }
+    .run .missed { padding: 8px 10px; border-radius: 8px; border: 1px solid var(--live); color: var(--live); font-size: 12px; font-weight: 600; }
+    .run .timeline { font-size: 12px; }
+    .run .timeline ol { margin: 6px 0 0; padding-left: 18px; display: grid; gap: 2px; font-variant-numeric: tabular-nums; }
     .pausecard { display: grid; grid-template-columns: 24px 180px 1fr auto; gap: 8px; align-items: center; padding: 8px 10px; border: 1px dashed var(--warn, #b54708); border-radius: 10px; font-size: 12px; }
     .pausecard .pi { text-align: center; font-size: 16px; }
     .pausecard .pnotes { grid-column: 2 / -1; display: grid; gap: 4px; font-weight: 600; color: var(--muted); }
@@ -131,6 +151,15 @@
       </div>
       <label class="check"><input type="checkbox" data-path="resetTabs"> Reset demo also restores these tabs (closes all other tabs in the demo window)</label>
       <p class="muted" style="margin:0;font-size:12px">When screen sharing, share the <b>window</b> or <b>screen</b>, not a single tab, or the audience won't follow you between tabs.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>Runs (review)</h2>
+    <p class="muted">Each run of the show clock is saved here, from <b>Start clock</b> until <b>Reset demo</b> or the next Start, tagged Rehearse or Live. It shows how long each segment and arc took against its budget, which planned topics and Slack posts you showed (and when) or missed, and a timeline of everything you did. The budgets above show the last run and the average next to them. Nothing here changes your plan. The last 30 runs are kept.</p>
+    <div class="card">
+      <div class="runs" id="runs"></div>
+      <div class="bar"><button class="danger" id="runsClear">Delete all finished runs</button></div>
     </div>
   </section>
 
