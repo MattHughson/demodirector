@@ -34,10 +34,11 @@ Prefer a one-off installer? `cd streamdeck && npm install && npm run pack` makes
 | **Camera** | Bubble on/off | ON (green) / OFF, plus size |
 | **Blink** | Blink mode on/off | Countdown: "Hides 22s" / "Back 8s" |
 | **Camera size** | S → M → L | Current size (or the dragged px size) |
-| **Show clock** | Tap: start the show clock (zeroes segment timers), then pause / resume. Hold 1s: restart from 0:00 | *Start*, flashing while Live and not started; the show time; flashing *PAUSED* or *ARC N DONE* with the plan while paused |
+| **Show clock** | Tap: start the show clock (zeroes segment timers), then pause / resume. Hold 1s: restart from 0:00 | *Start*, flashing while Live and not started; the show time; a steady amber *PAUSED* or *ARC N DONE* with the plan while paused |
 | **Topic** | Segment topic 1–5 / Next / Previous / Show-hide current / Show step N (inspector) | Segment topic: its title, a countdown to its planned time, flashing SHOW NOW when due, ON AIR, then SHOWN. Others: step number and title; ON AIR when shown |
 | **Slack post** | Show / dismiss | SHOWING (purple) |
-| **Live / Rehearse** | Toggle mode | LIVE (red) / Rehearse |
+| **Resume** | End a pause without switching tabs: the show clock and segment timer start, and the segment's camera preset runs. Use it after End share has landed you on the next segment's tab and you've re-shared | Flashing during a pause, with the pause's name and the segment that starts next. Dim otherwise |
+| **Live / Rehearse** | Toggle mode (not in the ready-made profile: switch it from the extension's popup, Settings or the console) | LIVE (red) / Rehearse |
 | **Reset demo** | **Hold ~1 second.** A tap is ignored, so a stray press can't close your tabs. | HOLD… while held, then ✓ |
 | **Tab** | Next / previous demo tab (inspector) | The target tab's name, plus the current segment's time against its budget (amber at 80%, red when over) |
 | **Close tab** | Close the Chrome tab on screen and go to the next segment. On a slides segment it reads END SHARE and fires on a press (closing a shared tab ends a Meet share); elsewhere hold ½s and jump to the next segment (never the last tab in the window) | The segment you're closing and where you'll land |
@@ -56,7 +57,7 @@ It's built for the **Stream Deck MK.2**. To regenerate it (e.g. after changing t
 
 | | | | | |
 |---|---|---|---|---|
-| Camera | Blink | Show clock | Live / Rehearse | Reset demo (hold) |
+| Camera | Blink | Show clock | Resume | Reset demo (hold) |
 | Segment topic 1 | Segment topic 2 | Segment topic 3 | Slack post | Close tab (hold) |
 | Veil 1 | Veil 2 | Veil 3 | Slide: Next | Tab: Next |
 

@@ -31,7 +31,7 @@ const glyph = (name, size, color) =>
 // Default key face (the plugin replaces it with a live one as soon as it runs).
 const keyFace = (name) =>
   `<svg xmlns="http://www.w3.org/2000/svg" width="144" height="144" viewBox="0 0 144 144"><rect width="144" height="144" fill="#141a25"/><g transform="translate(36 36) scale(3)" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${P[name]}</g></svg>`;
-const ICON_FOR = { veil: 'eyeoff', camera: 'camera', blink: 'blink', camsize: 'maximize', topic: 'star', slack: 'chat', mode: 'live', reset: 'reset', tab: 'tabs', closetab: 'close', clock: 'clock', slide: 'slides', console: 'monitor' };
+const ICON_FOR = { veil: 'eyeoff', camera: 'camera', blink: 'blink', camsize: 'maximize', topic: 'star', slack: 'chat', mode: 'live', reset: 'reset', tab: 'tabs', closetab: 'close', clock: 'clock', resume: 'play', slide: 'slides', console: 'monitor' };
 
 mkdirSync(`${PLUGIN}/imgs/actions`, { recursive: true });
 mkdirSync(`${PLUGIN}/imgs/plugin`, { recursive: true });

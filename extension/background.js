@@ -1049,7 +1049,8 @@ function arcBreakInfo(s) {
   const arcs = arcsOf(s.settings);
   const k = arcs.findIndex((a) => a.pauseId === s.arcBreak);
   if (k < 0) return null;
-  return { arc: k + 1, label: arcs[k].label, planTo: arcs.slice(0, k + 1).reduce((n, a) => n + a.minutes, 0) };
+  const entry = s.settings.tabs.find((t) => t.id === s.arcBreak);
+  return { arc: k + 1, label: arcs[k].label, notes: entry?.notes || '', planTo: arcs.slice(0, k + 1).reduce((n, a) => n + a.minutes, 0) };
 }
 
 function bridgeSlim(s) {

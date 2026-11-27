@@ -399,7 +399,8 @@ function renderTabs(state) {
       row.className = 'pausecard';
       row.innerHTML = `<span class="pi">⏸</span><input type="text" name="plabel" placeholder="Pause" aria-label="Pause name">
         <span class="muted"></span>
-        <span class="ops"><button data-d="-1" title="Move up">▲</button><button data-d="1" title="Move down">▼</button><button class="danger" data-x title="Remove">✕</button></span>`;
+        <span class="ops"><button data-d="-1" title="Move up">▲</button><button data-d="1" title="Move down">▼</button><button class="danger" data-x title="Remove">✕</button></span>
+        <div class="pnotes"><span>Talking points during the pause <em>· shown on the console until you press Resume</em></span></div>`;
       planTo += arcMin;
       row.querySelector('.muted').textContent = `End of arc ${arcNo}${arcMin ? ` · arc planned ${fmtMin(arcMin)} · ${fmtMin(planTo)} in total` : ''}. Moving past it pauses the show clock.`;
       arcNo++;
@@ -407,6 +408,12 @@ function renderTabs(state) {
       const pl = row.querySelector('input');
       pl.value = t.label || '';
       pl.onchange = () => saveTabs(current.settings.tabs.map((x, k) => (k !== i ? x : { ...x, label: pl.value.trim() })));
+      const pnotes = DDRich.editor({
+        value: t.notes || '',
+        placeholder: 'e.g. Take questions, then share the Studio tab. Type "- " for bullets.',
+        onSave: (html) => saveTabs(current.settings.tabs.map((x, k) => (k !== i ? x : { ...x, notes: html }))),
+      });
+      row.querySelector('.pnotes').append(pnotes.el);
       row.querySelectorAll('[data-d]').forEach((b) => {
         b.onclick = () => {
           const next = [...current.settings.tabs];

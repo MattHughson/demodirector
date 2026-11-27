@@ -170,11 +170,31 @@ export const ACTIONS = {
       const t = (s.clockPausedAt || now) - s.liveStart - (s.clockPausedMs || 0);
       if (s.clockPausedAt) {
         const b = s.arcBreak;
-        return { bg: flash(now), icon: 'clock', top: b ? `ARC ${b.arc} DONE` : 'PAUSED', label: fmtTime(t), sub: b?.planTo ? `plan ${fmtTime(b.planTo * 60000)}` : 'tap: resume' };
+        // Steady, not flashing: the Resume key is the one that blinks during a pause.
+        return { bg: COLORS.warn, icon: 'clock', top: b ? `ARC ${b.arc} DONE` : 'PAUSED', label: fmtTime(t), sub: b?.planTo ? `plan ${fmtTime(b.planTo * 60000)}` : 'tap: resume' };
       }
       return { bg: COLORS.on, icon: 'clock', top: 'SHOW TIME', label: fmtTime(t), sub: 'tap: pause' };
     },
     press: () => ({ type: 'clock.start' }), // not started: a tap; started: the hold (restart)
+  },
+
+  // Resume: ends a pause without touching the tabs. After End share lands you on the
+  // next segment's tab, it blinks until you've re-shared and pressed it: the clock and
+  // segment timer start, and the segment's camera preset runs.
+  resume: {
+    ticks: true,
+    view(s, _settings, now) {
+      if (!s.liveStart) return { icon: 'play', top: 'RESUME', label: 'Clock off', sub: 'start it first', dim: true };
+      if (!s.clockPausedAt) {
+        const seg = currentSeg(s);
+        return { icon: 'play', top: 'RESUME', label: 'No pause', sub: seg ? `on: ${seg.label}` : '', dim: true };
+      }
+      const b = s.arcBreak;
+      const seg = currentSeg(s);
+      if (b) return { bg: flash(now), icon: 'play', top: b.label && b.label !== 'Pause' ? b.label : `PAUSE · ARC ${b.arc}`, label: seg ? seg.label : 'Resume', sub: 'tap: start it' };
+      return { bg: flash(now), icon: 'play', top: 'PAUSED', label: 'Resume', sub: 'tap: clock on' };
+    },
+    press: (s) => (s.liveStart && s.clockPausedAt ? { type: 'clock.resume' } : null),
   },
 
   // Hold-to-confirm is handled in plugin.js; this is just the face.
@@ -239,4 +259,4 @@ export const ACTIONS = {
 };
 
 // Face shown while the extension isn't connected.
-export const DISCONNECTED = (name) => ({ bg: COLORS.off, icon: { veil: 'eye', camera: 'camera', blink: 'blink', camsize: 'maximize', topic: 'star', slack: 'chat', mode: 'live', reset: 'reset', tab: 'next', closetab: 'close', clock: 'clock', slide: 'slides', console: 'monitor' }[name], top: 'OFFLINE', label: 'Chrome?', sub: 'not connected', dim: true });
+export const DISCONNECTED = (name) => ({ bg: COLORS.off, icon: { veil: 'eye', camera: 'camera', blink: 'blink', camsize: 'maximize', topic: 'star', slack: 'chat', mode: 'live', reset: 'reset', tab: 'next', closetab: 'close', clock: 'clock', resume: 'play', slide: 'slides', console: 'monitor' }[name], top: 'OFFLINE', label: 'Chrome?', sub: 'not connected', dim: true });

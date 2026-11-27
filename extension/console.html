@@ -140,6 +140,10 @@
     .pausebox .pp { color: var(--muted); }
     .pausebox.behind .pp { color: var(--live, #f04438); font-weight: 700; }
     .pauserow { padding: 6px 10px; border-radius: 10px; border: 1px dashed var(--warn); color: var(--warn); font-size: 13px; font-weight: 600; }
+    .pauserow.now { border-style: solid; background: rgba(253,176,34,.08); font-size: 14px; }
+    .pauserow .tag { font-size: 11px; font-weight: 800; letter-spacing: .1em; }
+    .nowseg.pausing { border-color: var(--warn); }
+    .nowseg.pausing .k { color: var(--warn); }
     .clock.confirm { font: 700 14px -apple-system, system-ui, sans-serif; border-color: var(--warn); color: var(--warn); }
     .nowseg { grid-column: 1 / -1; background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 14px 16px; display: grid; gap: 10px; }
     .nowseg.on { border-color: var(--accent); }
@@ -233,7 +237,7 @@
         <div><div class="k" id="nsKicker"></div><div class="t" id="nsLabel"></div></div>
         <div class="timer"><span class="big" id="nsTime"></span><div class="bar"><i id="nsBar"></i></div></div>
       </div>
-      <div class="pausebox" id="pauseBox" hidden><span class="pt" id="pbTitle"></span><span class="big" id="pbTime"></span><span class="pp" id="pbPlan"></span><span class="pp">· press the clock to resume</span></div>
+      <div class="pausebox" id="pauseBox" hidden><span class="pt" id="pbTitle"></span><span class="big" id="pbTime"></span><span class="pp" id="pbPlan"></span><span class="pp" id="pbHint"></span></div>
       <div class="segtopics" id="nsTopics"></div>
       <div class="segnotes" id="nsNotes"></div>
     </section>

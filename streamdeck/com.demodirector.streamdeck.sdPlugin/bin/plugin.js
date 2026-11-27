@@ -17529,6 +17529,7 @@ var Bridge = class extends import_node_events.EventEmitter {
     eyeoff: '<path d="M10.6 5.1A10.8 10.8 0 0 1 12 5c6.4 0 10 7 10 7a18 18 0 0 1-2.9 3.9M6.6 6.6C3.9 8.4 2 12 2 12s3.6 7 10 7c1.8 0 3.4-.5 4.8-1.3"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2M3 3l18 18"/>',
     prev: '<path d="M15 5l-7 7 7 7"/>',
     next: '<path d="M9 5l7 7-7 7"/>',
+    play: '<circle cx="12" cy="12" r="9"/><path d="M10 8.5l5.5 3.5-5.5 3.5z"/>',
     clock: '<circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2.5M9 2h6"/>',
     close: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9.5 9.5l5 5M14.5 9.5l-5 5"/>',
     reset: '<path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/>',
@@ -17722,12 +17723,30 @@ var ACTIONS = {
       const t = (s.clockPausedAt || now) - s.liveStart - (s.clockPausedMs || 0);
       if (s.clockPausedAt) {
         const b = s.arcBreak;
-        return { bg: flash(now), icon: "clock", top: b ? `ARC ${b.arc} DONE` : "PAUSED", label: fmtTime(t), sub: b?.planTo ? `plan ${fmtTime(b.planTo * 6e4)}` : "tap: resume" };
+        return { bg: COLORS.warn, icon: "clock", top: b ? `ARC ${b.arc} DONE` : "PAUSED", label: fmtTime(t), sub: b?.planTo ? `plan ${fmtTime(b.planTo * 6e4)}` : "tap: resume" };
       }
       return { bg: COLORS.on, icon: "clock", top: "SHOW TIME", label: fmtTime(t), sub: "tap: pause" };
     },
     press: () => ({ type: "clock.start" })
     // not started: a tap; started: the hold (restart)
+  },
+  // Resume: ends a pause without touching the tabs. After End share lands you on the
+  // next segment's tab, it blinks until you've re-shared and pressed it: the clock and
+  // segment timer start, and the segment's camera preset runs.
+  resume: {
+    ticks: true,
+    view(s, _settings, now) {
+      if (!s.liveStart) return { icon: "play", top: "RESUME", label: "Clock off", sub: "start it first", dim: true };
+      if (!s.clockPausedAt) {
+        const seg2 = currentSeg(s);
+        return { icon: "play", top: "RESUME", label: "No pause", sub: seg2 ? `on: ${seg2.label}` : "", dim: true };
+      }
+      const b = s.arcBreak;
+      const seg = currentSeg(s);
+      if (b) return { bg: flash(now), icon: "play", top: b.label && b.label !== "Pause" ? b.label : `PAUSE \xB7 ARC ${b.arc}`, label: seg ? seg.label : "Resume", sub: "tap: start it" };
+      return { bg: flash(now), icon: "play", top: "PAUSED", label: "Resume", sub: "tap: clock on" };
+    },
+    press: (s) => s.liveStart && s.clockPausedAt ? { type: "clock.resume" } : null
   },
   // Hold-to-confirm is handled in plugin.js; this is just the face.
   reset: {
@@ -17783,7 +17802,7 @@ var ACTIONS = {
     press: () => ({ type: "console.open" })
   }
 };
-var DISCONNECTED = (name) => ({ bg: COLORS.off, icon: { veil: "eye", camera: "camera", blink: "blink", camsize: "maximize", topic: "star", slack: "chat", mode: "live", reset: "reset", tab: "next", closetab: "close", clock: "clock", slide: "slides", console: "monitor" }[name], top: "OFFLINE", label: "Chrome?", sub: "not connected", dim: true });
+var DISCONNECTED = (name) => ({ bg: COLORS.off, icon: { veil: "eye", camera: "camera", blink: "blink", camsize: "maximize", topic: "star", slack: "chat", mode: "live", reset: "reset", tab: "next", closetab: "close", clock: "clock", resume: "play", slide: "slides", console: "monitor" }[name], top: "OFFLINE", label: "Chrome?", sub: "not connected", dim: true });
 
 // src/plugin.js
 var log = plugin_default.logger;

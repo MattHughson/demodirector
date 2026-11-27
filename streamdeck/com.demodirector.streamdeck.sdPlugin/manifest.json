@@ -133,6 +133,23 @@
       "SupportedInMultiActions": true
     },
     {
+      "Name": "Resume",
+      "UUID": "com.demodirector.streamdeck.resume",
+      "Icon": "imgs/actions/resume",
+      "Tooltip": "Blinks during a pause; press to end it and start the segment on screen (no tab switch)",
+      "States": [
+        {
+          "Image": "imgs/actions/resume-key",
+          "ShowTitle": false
+        }
+      ],
+      "Controllers": [
+        "Keypad"
+      ],
+      "UserTitleEnabled": false,
+      "SupportedInMultiActions": true
+    },
+    {
       "Name": "Live / Rehearse",
       "UUID": "com.demodirector.streamdeck.mode",
       "Icon": "imgs/actions/mode",

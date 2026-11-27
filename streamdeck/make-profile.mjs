@@ -19,7 +19,7 @@ const LAYOUT = [
   [0, 0, A('camera', 'Camera')],
   [1, 0, A('blink', 'Blink')],
   [2, 0, A('clock', 'Show clock')],
-  [3, 0, A('mode', 'Live / Rehearse')],
+  [3, 0, A('resume', 'Resume')], // Live / Rehearse is switched in the extension
   [4, 0, A('reset', 'Reset demo')],
   [0, 1, A('topic', 'Topic', { mode: 'segment', slot: 1 })],
   [1, 1, A('topic', 'Topic', { mode: 'segment', slot: 2 })],

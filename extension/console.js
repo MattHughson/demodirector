@@ -251,7 +251,11 @@ function renderPause(segs, i) {
   const t = showTime();
   const plan = brk ? brk.planTo * 60000 : i >= 0 ? planTo(segs, i) : 0;
   const diff = t - plan;
-  $('#pbTitle').textContent = brk ? `⏸ End of arc ${brk.arc}${brk.label && brk.label !== 'Pause' ? ` · ${brk.label}` : ''}` : '⏸ Paused';
+  const next = brk && segs[i];
+  $('#pbTitle').textContent = brk ? `⏸ End of arc ${brk.arc}` : '⏸ Paused';
+  $('#pbHint').textContent = next
+    ? `· up next: ${next.label || next.url}. Share it, then press Resume on the Deck`
+    : '· press the clock to resume';
   $('#pbTime').textContent = fmt(t);
   $('#pbPlan').textContent = plan
     ? `planned ${fmt(plan)} · ${Math.abs(diff) < 15000 ? 'right on time' : diff > 0 ? `${fmt(diff)} behind` : `${fmt(-diff)} ahead`}`
@@ -278,7 +282,21 @@ function renderTimers() {
   const ns = $('#nowSeg');
   ns.classList.toggle('on', !!seg);
   ns.classList.remove('warnt', 'overt');
-  if (!seg) {
+  const brk = state.liveStart && state.clockPausedAt && state.arcBreakInfo;
+  ns.classList.toggle('pausing', !!brk);
+  if (brk) {
+    // An arc pause: the pause is the step you're on. The segment behind it waits for Resume.
+    $('#nsKicker').textContent = `Pause · end of arc ${brk.arc}`;
+    $('#nsLabel').textContent = brk.label || 'Pause';
+    $('#nsTime').textContent = '';
+    $('#nsBar').style.width = '0';
+    const html = DDRich.toHtml(brk.notes) || 'No talking points for this pause. Add some in Settings → Segments.';
+    if ($('#nsNotes').dataset.src !== html) {
+      $('#nsNotes').innerHTML = html;
+      $('#nsNotes').dataset.src = html;
+    }
+    $('#nsNotes').classList.toggle('empty', DDRich.isEmpty(brk.notes));
+  } else if (!seg) {
     $('#nsKicker').textContent = segs.length ? 'Not on a segment' : 'No segments yet';
     $('#nsLabel').textContent = segs.length ? 'Switch to one of your demo tabs' : 'Add them in Settings → Segments';
     $('#nsTime').textContent = '';
@@ -303,7 +321,7 @@ function renderTimers() {
     }
     $('#nsNotes').classList.toggle('empty', DDRich.isEmpty(seg.notes));
   }
-  renderSegTopics(seg);
+  renderSegTopics(brk ? null : seg);
   renderPause(segs, i);
   // Slides mode: the deck segment's timer next to the slide number
   const st = $('#slSegTime');
@@ -334,13 +352,23 @@ async function renderTabs() {
   // Only where you are and where you're going next: no going back, earlier tabs may be closed.
   let at = st.tabs.findIndex((t) => t.active);
   if (at < 0) at = st.tabs.findIndex((t) => t.id === state?.segCurrent?.id);
-  const show = at < 0 ? [0] : [at, at + 1].filter((k) => k < st.tabs.length);
+  // During an arc pause the tab on screen is already the next segment, but it hasn't started.
+  const pausing = !!(state?.liveStart && state.clockPausedAt && state.arcBreakInfo);
+  const show = at < 0 ? [0] : pausing ? [at] : [at, at + 1].filter((k) => k < st.tabs.length);
   const left = st.tabs.length - 1 - (at < 0 ? 0 : at + 1);
   $('#runCount').textContent = at < 0 ? `${st.tabs.length} segments` : `${at + 1} / ${st.tabs.length}${left > 0 ? ` · ${left} more after` : ''}`;
   // A pause entry between where you are and the next segment (the end of an arc).
   const all = state?.settings.tabs || [];
   const posOf = (id) => all.findIndex((x) => x.kind !== 'pause' && (x.id || `u:${x.url}`) === id);
   const brk = at >= 0 && show.length > 1 ? all.slice(posOf(st.tabs[at].id) + 1, posOf(st.tabs[at + 1].id)).find((x) => x.kind === 'pause') : null;
+  if (pausing && at >= 0) {
+    const p = document.createElement('div');
+    p.className = 'pauserow now';
+    const b = state.arcBreakInfo;
+    p.innerHTML = '<span class="tag">NOW</span> ';
+    p.append(`⏸ ${b.label || 'Pause'} · end of arc ${b.arc}: press Resume to start the next segment`);
+    root.append(p);
+  }
   show.forEach((i, k) => {
     if (k === 1 && brk) {
       const p = document.createElement('div');
@@ -354,7 +382,7 @@ async function renderTabs() {
     b.className = `tabi${t.active ? ' active' : ''}${t.open ? '' : ' missing'}`;
     b.dataset.id = t.id;
     b.dataset.status = t.active ? 'ON SCREEN' : t.open ? 'OPEN' : 'NOT OPEN';
-    b.innerHTML = `<span class="n">${i + 1}</span><span class="l"><span class="tag">${at >= 0 && k === 0 ? 'NOW' : 'NEXT'}</span><b></b><small></small></span><span class="pill"></span>`;
+    b.innerHTML = `<span class="n">${i + 1}</span><span class="l"><span class="tag">${at >= 0 && k === 0 && !pausing ? 'NOW' : 'NEXT'}</span><b></b><small></small></span><span class="pill"></span>`;
     b.querySelector('b').textContent = t.label || new URL(t.url).host;
     const host = (u) => u.replace(/^https?:\/\//, '');
     b.querySelector('small').textContent = t.splitUrl ? `${host(t.url)}  ⧉  ${host(t.splitUrl)}` : host(t.url);
@@ -439,7 +467,8 @@ async function thumbInto(el, pageId) {
 async function renderSlides() {
   const tab = await activeDemoTab();
   const slidesTab = isSlidesUrl(tab?.url);
-  const on = slidesTab && !peek;
+  const pausing = !!(state?.liveStart && state.clockPausedAt && state.arcBreak);
+  const on = slidesTab && !peek && !pausing;
   $('#slidesView').hidden = !on;
   $('#demoView').hidden = on;
   $('#viewPill').textContent = slidesTab ? (peek ? 'SLIDES TAB · DEMO CONTROLS' : 'SLIDES MODE') : 'DEMO MODE';
