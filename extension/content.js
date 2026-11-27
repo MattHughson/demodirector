@@ -8,6 +8,11 @@
   if (window.__demoDirector) return;
   window.__demoDirector = true;
 
+  // Runs in every frame (a Studio inside the Sanity dashboard is an iframe):
+  // veils and the picker work in each; the camera, topic and Slack post draw
+  // only in the top page.
+  const TOP = window === window.top;
+  const FRAME_TOKEN = Math.random().toString(36).slice(2);
   const CLASS_PREFIX = 'veil-';
   let state = { veils: [], active: [], mode: 'rehearse' }; // replaced by the first broadcast
   let applied = new Set(); // veil classes we currently own on <html>
@@ -226,7 +231,7 @@
 
   function renderChip() {
     const rehearse = state.mode !== 'live';
-    chip.hidden = !rehearse || picker.active;
+    chip.hidden = !TOP || !rehearse || picker.active;
     chip.style.display = chip.hidden ? 'none' : '';
     const n = state.active.length;
     chip.textContent = `REHEARSE · ${n} veil${n === 1 ? '' : 's'} on`;
@@ -235,7 +240,28 @@
   // ---------- picker ----------
 
   // kept: selector lines from earlier picks of this same veil ("+ Add another").
-  const picker = { active: false, phase: 'hover', target: null, stack: [], kept: [], nodes: [], raf: 0 };
+  const picker = { active: false, phase: 'hover', target: null, stack: [], kept: [], nodes: [], raf: 0, mx: -1, my: -1, asked: new Set() };
+
+  // ---- frames: which child frames run us, so the picker can hand over to them ----
+  const scripted = new WeakSet(); // child frame windows with Demo Director in them
+  const isFrame = (n) => n?.tagName === 'IFRAME' || n?.tagName === 'FRAME';
+  const frameOrigin = (f) => {
+    try {
+      const u = new URL(f.getAttribute('src') || '', location.href);
+      return /^https?:$/.test(u.protocol) ? u.origin : '';
+    } catch {
+      return '';
+    }
+  };
+  addEventListener('message', (e) => {
+    const d = e.data;
+    if (!d || typeof d !== 'object' || d.__dd !== 1) return;
+    if (d.kind === 'here' && e.source && e.source !== window) scripted.add(e.source);
+    else if (d.kind === 'ping' && e.source === window.parent) window.parent.postMessage({ __dd: 1, kind: 'here' }, '*');
+    else if (d.kind === 'key' && e.source === window.parent && picker.active) handleKey(String(d.key));
+  });
+  if (!TOP) window.parent.postMessage({ __dd: 1, kind: 'here' }, '*');
+  const pingFrames = () => document.querySelectorAll('iframe, frame').forEach((f) => f.contentWindow?.postMessage({ __dd: 1, kind: 'ping' }, '*'));
 
   function isOurs(e) {
     return e.composedPath().includes(host);
@@ -271,13 +297,34 @@
 
   function drawHover() {
     clearOverlay();
-    const bar = el('div', 'bar');
-    bar.innerHTML = 'Pick an element to veil · <kbd>↑</kbd> parent · <kbd>↓</kbd> child · <kbd>Enter</kbd>/click select · <kbd>Esc</kbd> cancel';
-    ui.appendChild(bar);
-    picker.nodes.push(bar);
+    if (TOP) {
+      const bar = el('div', 'bar');
+      bar.innerHTML = 'Pick an element to veil · <kbd>↑</kbd> parent · <kbd>↓</kbd> child · <kbd>←</kbd><kbd>→</kbd> siblings · <kbd>Enter</kbd>/click select · <kbd>Esc</kbd> cancel';
+      ui.appendChild(bar);
+      picker.nodes.push(bar);
+    }
     if (picker.kept.length) drawMatches(picker.kept.join(', '));
     const t = picker.target;
     if (!t) return;
+    if (isFrame(t)) {
+      // The frame's own picker highlights what's inside it.
+      if (t.contentWindow && scripted.has(t.contentWindow)) return;
+      const origin = frameOrigin(t);
+      const r = t.getBoundingClientRect();
+      box(r, 'hl');
+      const tip = el('div', 'tip');
+      tip.innerHTML = '<b>Inside a frame</b> ';
+      tip.append(document.createTextNode(origin ? `from ${new URL(origin).host}: click the Demo Director toolbar button and Allow it, then pick again.` : 'Demo Director can’t reach into.'));
+      tip.style.left = `${Math.max(8, Math.min(r.left + 8, innerWidth - 400))}px`;
+      tip.style.top = `${Math.max(8, r.top + 8)}px`;
+      ui.appendChild(tip);
+      picker.nodes.push(tip);
+      if (origin && !picker.asked.has(origin)) {
+        picker.asked.add(origin);
+        send({ type: 'frame.ask', origin });
+      }
+      return;
+    }
     const sel = DDSelector.position(t);
     drawMatches(sel);
     const r = t.getBoundingClientRect();
@@ -306,10 +353,32 @@
     if (t && t !== document.documentElement && t !== document.body && t !== host) picker.target = t;
   }
 
+  const contains = (r, x, y) => r.width > 0 && r.height > 0 && x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
+  // The child of t under the pointer (topmost in document order wins), if any.
+  const childAt = (t, x, y) => [...(t?.children || [])].reverse().find((c) => c !== host && contains(c.getBoundingClientRect(), x, y));
+  // elementFromPoint skips elements with pointer-events: none (common for text in
+  // UI kits): keep going down while a child sits under the pointer. Not into SVGs.
+  function deepest(n, x, y) {
+    for (let i = 0; i < 20 && n && n.tagName !== 'svg' && !isFrame(n); i++) {
+      const c = childAt(n, x, y);
+      if (!c) break;
+      n = c;
+    }
+    return n;
+  }
+
   const onMove = (e) => {
     if (isOurs(e) || picker.phase !== 'hover') return;
     picker.stack = [];
-    setTarget(document.elementFromPoint(e.clientX, e.clientY));
+    picker.mx = e.clientX;
+    picker.my = e.clientY;
+    setTarget(deepest(document.elementFromPoint(e.clientX, e.clientY), e.clientX, e.clientY));
+  };
+  // Leaving this document: into a child frame (hand over to it) or out of the window.
+  const onOut = (e) => {
+    if (e.relatedTarget || picker.phase !== 'hover') return;
+    const under = document.elementFromPoint(e.clientX, e.clientY);
+    picker.target = isFrame(under) ? under : null;
   };
 
   const block = (e) => {
@@ -328,18 +397,34 @@
       return stopPicker();
     }
     if (picker.phase !== 'hover' || isOurs(e)) return;
-    const t = picker.target;
-    if (e.key === 'ArrowUp' && t?.parentElement) {
-      picker.stack.push(t);
-      setTarget(t.parentElement);
-    } else if (e.key === 'ArrowDown') {
-      setTarget(picker.stack.pop() || t?.firstElementChild);
-    } else if (e.key === 'Enter' && t) {
-      openForm();
-    } else return;
+    if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter'].includes(e.key)) return;
     e.preventDefault();
     e.stopPropagation();
+    handleKey(e.key);
   };
+
+  function handleKey(key) {
+    if (key === 'Escape') return stopPicker();
+    if (picker.phase !== 'hover') return;
+    const t = picker.target;
+    // Hovering a frame that runs us: the keys are for the element picked inside it.
+    if (isFrame(t) && t.contentWindow && scripted.has(t.contentWindow)) return t.contentWindow.postMessage({ __dd: 1, kind: 'key', key }, '*');
+    if (key === 'ArrowUp' && t?.parentElement) {
+      picker.stack.push(t);
+      setTarget(t.parentElement);
+    } else if (key === 'ArrowDown') {
+      // Back down the way you came, else the child under the pointer, else the first child.
+      setTarget(picker.stack.pop() || childAt(t, picker.mx, picker.my) || t?.firstElementChild);
+    } else if (key === 'ArrowLeft' || key === 'ArrowRight') {
+      const sib = key === 'ArrowLeft' ? t?.previousElementSibling : t?.nextElementSibling;
+      if (sib && sib !== host) {
+        picker.stack = [];
+        setTarget(sib);
+      }
+    } else if (key === 'Enter' && t) {
+      openForm();
+    }
+  }
 
   const BLOCKED = ['pointerdown', 'pointerup', 'mousedown', 'mouseup', 'click', 'dblclick', 'contextmenu'];
 
@@ -347,17 +432,22 @@
     if (state.mode === 'live' || picker.active) return;
     Object.assign(picker, { active: true, phase: 'hover', target: null, stack: [], kept: [] });
     form.name.value = '';
+    pingFrames();
     addEventListener('mousemove', onMove, true);
+    document.addEventListener('mouseout', onOut, true);
     addEventListener('keydown', onKey, true);
     BLOCKED.forEach((t) => addEventListener(t, block, true));
     renderChip();
     loop();
   }
 
-  function stopPicker() {
+  // Stopping in one frame stops the picker in all of them (unless local: e.g. Live mode, which every frame sees anyway).
+  function stopPicker(local = false) {
     if (!picker.active) return;
+    if (local !== true) send({ type: 'picker.stop', except: FRAME_TOKEN });
     picker.active = false;
     cancelAnimationFrame(picker.raf);
+    document.removeEventListener('mouseout', onOut, true);
     removeEventListener('mousemove', onMove, true);
     removeEventListener('keydown', onKey, true);
     BLOCKED.forEach((t) => removeEventListener(t, block, true));
@@ -461,7 +551,9 @@
   form.save.addEventListener('click', saveVeil);
 
   function openForm() {
+    if (isFrame(picker.target)) return; // a frame we can't reach into
     picker.phase = 'form';
+    send({ type: 'picker.stop', except: FRAME_TOKEN }); // the other frames stop picking
     form.q('input[value=position]').checked = true;
     if (!picker.kept.length) {
       form.tmode.value = '';
@@ -493,10 +585,11 @@
     state = next;
     renderCss();
     applyClasses();
-    if (state.mode === 'live') stopPicker();
+    if (state.mode === 'live') stopPicker(true);
     renderChip();
     // The other pane of a split segment: veils yes, but the camera, topic and Slack post draw only once.
-    const quiet = myTabId != null && (state.quietTabs || []).includes(myTabId);
+    // Frames inside the page never draw them.
+    const quiet = !TOP || (myTabId != null && (state.quietTabs || []).includes(myTabId));
     overlays.render(
       quiet ? { ...state, camera: { ...state.camera, on: false }, topic: { ...state.topic, shown: false }, slack: { ...state.slack, shown: false } } : state
     );
@@ -510,6 +603,7 @@
   chrome.runtime.onMessage.addListener((msg) => {
     if (msg?.type === 'state') setState(msg.state);
     else if (msg?.type === 'picker.start') startPicker();
+    else if (msg?.type === 'picker.stop' && msg.except !== FRAME_TOKEN) stopPicker(true);
   });
 
   ensureAttached();

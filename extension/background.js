@@ -38,11 +38,11 @@ async function syncDynamicSites() {
   if (!extra.length) return;
   const files = chrome.runtime.getManifest().content_scripts[0].js;
   await chrome.scripting.registerContentScripts([
-    { id: DYNAMIC_SCRIPT_ID, matches: extra, js: files, runAt: 'document_start', persistAcrossSessions: true },
+    { id: DYNAMIC_SCRIPT_ID, matches: extra, js: files, runAt: 'document_start', allFrames: true, persistAcrossSessions: true },
   ]);
   // Also bring already-open tabs on those sites to life (the script guards against double-injection).
   const tabs = await chrome.tabs.query({ url: extra });
-  for (const t of tabs) chrome.scripting.executeScript({ target: { tabId: t.id }, files }).catch(() => {});
+  for (const t of tabs) chrome.scripting.executeScript({ target: { tabId: t.id, allFrames: true }, files }).catch(() => {});
 }
 
 chrome.permissions.onAdded.addListener(syncDynamicSites);
@@ -789,6 +789,19 @@ const handlers = {
     return handlers['mode.set']({ mode: mode === 'live' ? 'rehearse' : 'live' });
   },
 
+  // Every frame of the tab runs a picker; stopping one (cancel, or picking inside it) stops the rest.
+  async 'picker.stop'({ tabId, except }) {
+    if (tabId) await chrome.tabs.sendMessage(tabId, { type: 'picker.stop', except }).catch(() => {});
+    return { ok: true };
+  },
+
+  // The picker hovered a frame from a site Demo Director can't run on yet: the
+  // toolbar popup offers to allow it (permission requests need a click there).
+  async 'frame.ask'({ origin }) {
+    if (/^https?:\/\/[^/]+$/.test(origin || '')) await chrome.storage.session.set({ frameAsk: origin });
+    return { ok: true };
+  },
+
   async 'picker.start'({ tabId } = {}) {
     const { mode } = await loadState();
     if (mode === 'live') return { ok: false, error: 'Switch to Rehearse mode to pick elements.' };
@@ -1169,7 +1182,7 @@ chrome.storage.onChanged.addListener((changes, area) => {
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg?.type !== 'action') return;
   const action = { ...msg.action };
-  if (['picker.start', 'camera.place', 'tab.whoami'].includes(action.type) && !action.tabId && sender.tab) action.tabId = sender.tab.id;
+  if (['picker.start', 'picker.stop', 'camera.place', 'tab.whoami'].includes(action.type) && !action.tabId && sender.tab) action.tabId = sender.tab.id;
   dispatch(action).then(sendResponse, (e) => sendResponse({ ok: false, error: String(e) }));
   return true;
 });
@@ -1210,7 +1223,7 @@ chrome.runtime.onInstalled.addListener(async () => {
   const files = chrome.runtime.getManifest().content_scripts[0].js;
   const tabs = await chrome.tabs.query({ url: STATIC_MATCHES });
   for (const t of tabs) {
-    chrome.scripting.executeScript({ target: { tabId: t.id }, files }).catch(() => {});
+    chrome.scripting.executeScript({ target: { tabId: t.id, allFrames: true }, files }).catch(() => {});
   }
   await syncDynamicSites();
   updateBadge(await loadState());

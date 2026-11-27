@@ -102,6 +102,8 @@ In **Settings → Demo tabs**, list the tabs your demo needs, in order, each wit
 
 Other windows and the console are never touched. An empty list never closes anything, and a checkbox turns the tab rebuild off. A tab matches if it's on the same site at or below the URL's path (e.g. `/structure/drops/harbor-line` matches `/structure/drops`).
 
+**Pages inside frames (e.g. a Studio in the Sanity dashboard):** Demo Director runs inside frames too, so veils and the picker work on a Studio the dashboard shows in an iframe. The camera, topic and Slack post still draw once, on the top page. If the frame's site isn't allowed yet, the picker says *Inside a frame from …*. Click the Demo Director toolbar button, press **Allow**, reload the page and pick again. In the picker, **↓** goes into the child under your mouse and **← / →** step between siblings.
+
 **Other sites (e.g. the storefront):** Demo Director runs on `localhost:3333` and `*.app.github.dev` out of the box. When you add a demo tab on any other site, Chrome asks for access; you can also click **Allow** on that row. Once allowed, everything (veils, camera, topics, Slack post) works there too.
 
 **Next / previous tab** (shortcuts, console buttons) cycles through the demo tabs only. When screen sharing, share the **window** or **screen**, not a single tab.

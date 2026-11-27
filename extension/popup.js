@@ -72,5 +72,24 @@ $('#pick').onclick = async () => {
   else $('#msg').textContent = res?.error || 'Could not start picker';
 };
 
+// The picker found the page's content inside a frame from a site we can't run on yet.
+(async () => {
+  const { frameAsk } = await chrome.storage.session.get('frameAsk');
+  if (!frameAsk) return;
+  const origins = [`${frameAsk}/*`];
+  if (await chrome.permissions.contains({ origins })) return chrome.storage.session.remove('frameAsk');
+  const box = $('#frameAsk');
+  box.hidden = false;
+  box.querySelector('span').textContent = `This page shows its content in a frame from ${new URL(frameAsk).host}. Allow Demo Director there so veils and the picker work inside it.`;
+  $('#frameAllow').onclick = async () => {
+    // Must run straight from the click: Chrome only asks for permissions on a user gesture.
+    const ok = await chrome.permissions.request({ origins }).catch(() => false);
+    if (!ok) return;
+    await chrome.storage.session.remove('frameAsk');
+    box.querySelector('span').textContent = `Allowed. Reload the page, then click "Pick element" again.`;
+    $('#frameAllow').remove();
+  };
+})();
+
 chrome.runtime.onMessage.addListener((msg) => msg?.type === 'state' && msg.state?.camera && render(msg.state));
 getState().then((s) => s && render(s));
