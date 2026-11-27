@@ -392,7 +392,8 @@ async function trackSegmentNow() {
   const brk = seg && s.liveStart && !s.clockPausedAt ? pauseBetween(s.settings, curId || s.segLast, seg.id) : null;
   if (brk) Object.assign(patch, { clockPausedAt: now, arcBreak: brk.id, segCurrent: { ...patch.segCurrent, paused: true } });
   if (seg) patch.segLast = null;
-  if (seg) patch.camera = cameraForSegment(s.camera, seg.camera);
+  // During an arc pause the segment hasn't really started: its camera preset waits for Resume.
+  if (seg && !(brk || s.arcBreak)) patch.camera = cameraForSegment(s.camera, seg.camera);
   await saveLive(patch);
   return { ok: true, segment: seg?.id || null };
 }
@@ -732,9 +733,13 @@ const handlers = {
   // "shown" marks on planned topics, and time the segment on screen from here.
   // (You may have been sharing for a while before the meeting really began.)
   async 'clock.start'() {
-    const { topic, segCurrent } = await loadState();
+    const { topic, segCurrent, camera, settings } = await loadState();
     const now = Date.now();
+    // Starting the show counts as arriving on the segment you're on: its camera
+    // preset (and arrival delay) runs again from now, not from when the tab opened.
+    const seg = segCurrent && configuredTabs(settings).find((t) => segId(t) === segCurrent.id);
     await saveLive({
+      ...(seg && { camera: cameraForSegment(camera, seg.camera) }),
       liveStart: now,
       clockPausedAt: null,
       clockPausedMs: 0,
@@ -759,7 +764,11 @@ const handlers = {
     const s = await loadState();
     if (!s.clockPausedAt) return { ok: true, unchanged: true };
     const now = Date.now();
+    // Resuming after an arc pause starts the segment you're on: its camera preset
+    // (and arrival delay) runs from now. A plain pause / resume leaves the camera alone.
+    const seg = s.arcBreak && s.segCurrent && configuredTabs(s.settings).find((t) => segId(t) === s.segCurrent.id);
     await saveLive({
+      ...(seg && { camera: cameraForSegment(s.camera, seg.camera) }),
       clockPausedAt: null,
       clockPausedMs: s.clockPausedMs + (now - s.clockPausedAt),
       arcBreak: null,
